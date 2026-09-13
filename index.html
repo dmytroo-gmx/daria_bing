@@ -40,5 +40,39 @@
     function updateAccess(next){session=next;const editor=!!session;document.getElementById('access-copy').innerHTML=editor?'<strong>Режим редактора.</strong> Изменения будут видны всей команде.':'<strong>Режим просмотра.</strong> Чтобы менять цифры, войди через рабочую почту.';document.getElementById('login-toggle').textContent=editor?'ВЫЙТИ':'ВОЙТИ РЕДАКТОРУ';document.getElementById('login-toggle').onclick=editor?async()=>{await db.auth.signOut();}:()=>toggleLogin()}
     const money=n=>new Intl.NumberFormat('pl-PL',{style:'currency',currency:'PLN',maximumFractionDigits:0}).format(n||0),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));function toggleConcertForm(){document.getElementById('concert-form').classList.toggle('open')}async function createConcert(event){event.preventDefault();const form=event.currentTarget;if(!session){document.getElementById('ops-note').textContent='Щоб додати концерт, увійди через робочу пошту.';toggleLogin(true);return}const payload=Object.fromEntries(new FormData(form));payload.capacity=Number(payload.capacity);const r=await db.from('daria_concerts').insert(payload);if(r.error){document.getElementById('ops-note').textContent='Не вдалося зберегти: '+r.error.message;return}form.reset();form.classList.remove('open');document.getElementById('ops-note').textContent='Концерт збережений.';loadOps()}function showView(view){const booking=view==='booking';document.getElementById('ops-dashboard').style.display=booking?'none':'block';document.querySelectorAll('.hero,.access,.login,.list,footer').forEach(el=>el.style.display=booking?'':'none');document.querySelectorAll('.ops-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));const labels={dashboard:'Картина агентства',concerts:'Концерты',sales:'Продажи',channels:'Каналы и атрибуция',operators:'Билетные операторы',finance:'Финансы',reports:'Отчёты'};if(!booking)document.querySelector('.ops-dashboard h2').textContent=labels[view]||labels.dashboard}async function loadOps(){const [concertsResult,ordersResult,expensesResult]=await Promise.all([db.from('daria_concerts').select('*').order('event_date'),db.from('daria_orders').select('concert_id,quantity,gross_amount,status'),db.from('daria_expenses').select('amount,category')]);if(concertsResult.error){document.getElementById('ops-concerts').innerHTML='<div class="ops-empty">Центр операцій буде доступний після застосування схеми та входу в робочий акаунт.</div>';return}const concertsData=concertsResult.data||[],orders=(ordersResult.data||[]).filter(x=>x.status==='PAID'),expenses=expensesResult.data||[];const byConcert=new Map();orders.forEach(x=>{const v=byConcert.get(x.concert_id)||{tickets:0,revenue:0};v.tickets+=Number(x.quantity)||0;v.revenue+=Number(x.gross_amount)||0;byConcert.set(x.concert_id,v)});const tickets=orders.reduce((n,x)=>n+(Number(x.quantity)||0),0),revenue=orders.reduce((n,x)=>n+(Number(x.gross_amount)||0),0),marketing=expenses.filter(x=>x.category==='MARKETING').reduce((n,x)=>n+(Number(x.amount)||0),0);document.getElementById('m-active').textContent=concertsData.filter(x=>['ACTIVE','ON_SALE'].includes(x.status)).length;document.getElementById('m-tickets').textContent=tickets.toLocaleString('pl-PL');document.getElementById('m-revenue').textContent=money(revenue);document.getElementById('m-spend').textContent=money(marketing);document.getElementById('ops-concerts').innerHTML=concertsData.map(x=>{const t=byConcert.get(x.id)||{tickets:0,revenue:0};return `<article class="ops-concert"><div><small>${esc(x.status)} · ${esc(x.city)}</small><h3>${esc(x.event_name)}</h3><small>${esc(x.venue||'Venue to be confirmed')} · ${esc(x.event_date||'Date to be confirmed')} · ${t.tickets} tickets · ${money(t.revenue)}</small></div><span class="risk">${esc(x.risk_status)}</span></article>`}).join('')||'<div class="ops-empty">Концертів ще немає.</div>'}document.getElementById('concert-form').addEventListener('submit',createConcert);document.querySelectorAll('.ops-nav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));db.auth.getSession().then(({data})=>{updateAccess(data.session);loadOps()});db.auth.onAuthStateChange((_event,next)=>updateAccess(next));db.channel('booking-sales-live').on('postgres_changes',{event:'UPDATE',schema:'public',table:'booking_sales',filter:'id=eq.1'},payload=>{applyRow(payload.new);status('Данные обновлены командой')}).subscribe();loadSales();
   </script>
+<script>
+  loadOps = async () => {
+    const [concertsResult, ordersResult, expensesResult] = await Promise.all([
+      db.from('daria_concerts').select('*').order('event_date'),
+      db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
+      db.from('daria_expenses').select('amount,category')
+    ]);
+    if (concertsResult.error) {
+      document.getElementById('ops-concerts').innerHTML = '<div class="ops-empty">Центр операцій буде доступний після застосування схеми та входу в робочий акаунт.</div>';
+      return;
+    }
+    const concerts = concertsResult.data || [];
+    const orders = (ordersResult.data || []).filter(order => order.status === 'PAID');
+    const expenses = expensesResult.data || [];
+    const totals = new Map();
+    for (const order of orders) {
+      const total = totals.get(order.concert_id) || { tickets: 0, revenue: 0 };
+      total.tickets += Number(order.ticket_count) || 0;
+      total.revenue += Number(order.gross_revenue) || 0;
+      totals.set(order.concert_id, total);
+    }
+    const tickets = orders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
+    const revenue = orders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
+    const marketing = expenses.filter(expense => expense.category === 'MARKETING').reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    document.getElementById('m-active').textContent = concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status)).length;
+    document.getElementById('m-tickets').textContent = tickets.toLocaleString('pl-PL');
+    document.getElementById('m-revenue').textContent = money(revenue);
+    document.getElementById('m-spend').textContent = money(marketing);
+    document.getElementById('ops-concerts').innerHTML = concerts.map(concert => {
+      const total = totals.get(concert.id) || { tickets: 0, revenue: 0 };
+      return `<article class="ops-concert"><div><small>${esc(concert.status)} · ${esc(concert.city)}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'Venue to be confirmed')} · ${esc(concert.event_date || 'Date to be confirmed')} · ${total.tickets} tickets · ${money(total.revenue)}</small></div><span class="risk">${esc(concert.risk_status)}</span></article>`;
+    }).join('') || '<div class="ops-empty">Концертів ще немає.</div>';
+  };
+</script>
 </body>
 </html>
