@@ -89,6 +89,12 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /Platform і confirmed навмисно не об’єднуються/);
 });
 
+test('an authenticated user must have a verified manager role before editing', () => {
+  assert.match(js, /daria_user_roles'\)\.select\('role'\)/);
+  assert.match(js, /\['ADMIN', 'MANAGER'\]\.includes\(state\.role\)/);
+  assert.match(js, /роль не призначена/);
+});
+
 test('legacy booking remains available and the responsive stylesheet loads', () => {
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);

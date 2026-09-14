@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, concerts: [], totals: new Map(), selectedConcertId: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -24,11 +24,22 @@ function setStatus(message, isError = false) {
   byId('sync-status').classList.toggle('error', isError);
 }
 
+function accessStatus() {
+  if (!state.session) return { message: 'Режим перегляду · увійдіть для редагування', isError: false };
+  if (state.role) return { message: `Спільна база · ${state.session.user.email} · ${state.role}`, isError: false };
+  return { message: `Є вхід: ${state.session.user.email} · роль не призначена`, isError: true };
+}
+
+function showAccessStatus() {
+  const current = accessStatus();
+  setStatus(current.message, current.isError);
+}
+
 function showView(view) {
   document.querySelectorAll('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === view));
   document.querySelectorAll('.ops-nav button').forEach(button => button.classList.toggle('active', button.dataset.view === view));
   window.history.replaceState(null, '', `#${view}`);
-  setStatus(state.session ? `Спільна база · ${state.session.user.email}` : 'Режим перегляду · увійдіть для редагування');
+  showAccessStatus();
   if (view === 'concerts') loadOperations();
   if (view === 'sales') loadSalesModule();
   if (view === 'channels') loadChannelsModule();
@@ -51,15 +62,26 @@ async function sendMagicLink() {
 
 function updateAccess(session) {
   state.session = session;
+  state.role = null;
   const loggedIn = Boolean(session);
   byId('login-toggle').textContent = loggedIn ? 'ВИЙТИ' : 'УВІЙТИ';
   byId('login-toggle').onclick = loggedIn ? async () => db.auth.signOut() : () => toggleLogin();
   if (loggedIn) toggleLogin(false);
-  setStatus(loggedIn ? `Спільна база · ${session.user.email}` : 'Режим перегляду · увійдіть для редагування');
+  showAccessStatus();
+  if (loggedIn) loadCurrentRole();
+}
+
+async function loadCurrentRole() {
+  if (!state.session) return;
+  const { data, error } = await db.from('daria_user_roles').select('role').eq('user_id', state.session.user.id).maybeSingle();
+  if (!state.session) return;
+  state.role = error ? null : data?.role || null;
+  showAccessStatus();
 }
 
 function requireEditor(message) {
-  if (state.session) return true;
+  if (state.session && ['ADMIN', 'MANAGER'].includes(state.role)) return true;
+  if (state.session) { setStatus('Вхід є, але роль MANAGER ще не підтверджена', true); return false; }
   toggleLogin(true);
   setStatus(message, true);
   return false;
