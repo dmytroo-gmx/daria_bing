@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, concerts: [], totals: new Map(), selectedConcertId: null };
+const state = { session: null, concerts: [], totals: new Map(), selectedConcertId: null, expenses: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -30,6 +30,7 @@ function showView(view) {
   window.history.replaceState(null, '', `#${view}`);
   setStatus(state.session ? `Спільна база · ${state.session.user.email}` : 'Режим перегляду · увійдіть для редагування');
   if (view === 'concerts') loadOperations();
+  if (view === 'finance') loadFinance();
 }
 
 function toggleLogin(force) {
@@ -194,6 +195,96 @@ async function loadOperations() {
   if (!concertsResult.error) renderConcerts();
 }
 
+function amountMap(items) {
+  const totals = new Map();
+  items.forEach(item => totals.set(item.currency || 'PLN', (totals.get(item.currency || 'PLN') || 0) + (Number(item.amount) || 0)));
+  return totals;
+}
+
+function currencyTotals(items) {
+  const totals = amountMap(items);
+  return totals.size ? [...totals.entries()].map(([currency, amount]) => money(amount, currency)).join(' · ') : '0 zł';
+}
+
+function populateConcertOptions() {
+  const options = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
+  byId('expense-concert').innerHTML = options;
+  const selected = byId('expense-concert-filter').value;
+  byId('expense-concert-filter').innerHTML = `<option value="ALL">УСІ</option>${options}`;
+  if ([...byId('expense-concert-filter').options].some(option => option.value === selected)) byId('expense-concert-filter').value = selected;
+}
+
+function renderFinance() {
+  const concertFilter = byId('expense-concert-filter').value;
+  const paymentFilter = byId('expense-payment-filter').value;
+  const visible = state.expenses.filter(expense => (concertFilter === 'ALL' || expense.concert_id === concertFilter) && (paymentFilter === 'ALL' || expense.payment_status === paymentFilter));
+  byId('expense-list').innerHTML = visible.map(expense => {
+    const concert = state.concerts.find(item => item.id === expense.concert_id);
+    return `<article class="expense-row"><div><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'Концерт не знайдено')}</small><h3>${esc(expense.description)}</h3><small>${esc(expense.category)} · ${esc(expense.expense_type.replaceAll('_', ' '))}${expense.supplier ? ` · ${esc(expense.supplier)}` : ''}</small></div><strong class="expense-amount">${money(expense.amount, expense.currency)}</strong><div class="expense-meta"><span class="expense-status ${expense.payment_status === 'PAID' ? 'paid' : ''}">${esc(expense.payment_status.replaceAll('_', ' '))}</span><span>${expense.due_date ? `до ${esc(dateLabel(expense.due_date))}` : 'строк не задано'}</span></div><button class="text-button" type="button" data-edit-expense="${esc(expense.id)}">РЕДАГУВАТИ</button></article>`;
+  }).join('') || '<div class="empty">За цим фільтром записів немає.</div>';
+  byId('f-paid').textContent = currencyTotals(state.expenses.filter(expense => expense.payment_status === 'PAID'));
+  byId('f-mandatory').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID'));
+  byId('f-optional').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.payment_status !== 'PAID'));
+  byId('f-deposits').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'REFUNDABLE_DEPOSIT' && expense.payment_status !== 'REFUNDED'));
+}
+
+async function loadFinance() {
+  if (!state.session) {
+    ['f-paid', 'f-mandatory', 'f-optional', 'f-deposits'].forEach(id => { byId(id).textContent = '—'; });
+    byId('expense-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр витрат.</div>';
+    byId('finance-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як відсутність витрат.';
+    state.expenses = [];
+    return;
+  }
+  if (!state.concerts.length) await loadOperations();
+  const { data, error } = await db.from('daria_expenses').select('*').order('due_date', { ascending: true, nullsFirst: false });
+  if (error) {
+    byId('expense-list').innerHTML = `<div class="empty">Не вдалося завантажити витрати: ${esc(error.message)}</div>`;
+    byId('finance-note').classList.add('error');
+    return;
+  }
+  state.expenses = data || [];
+  populateConcertOptions();
+  renderFinance();
+  byId('finance-note').classList.remove('error');
+  byId('finance-note').textContent = 'Факт: PAID. Майбутні обов’язкові, опційні витрати та поворотні застави показані окремо. Валюти не змішуються.';
+}
+
+function openExpenseForm(expense = null) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати витрати.')) return;
+  if (!state.concerts.length) { setStatus('Спочатку додайте концерт до реєстру.', true); return; }
+  const form = byId('expense-form');
+  populateConcertOptions();
+  form.reset();
+  form.hidden = false;
+  byId('expense-form-mode').textContent = expense ? 'РЕДАГУВАННЯ ВИТРАТИ' : 'НОВА ВИТРАТА';
+  byId('expense-form-title').textContent = expense ? expense.description : 'Додати запис';
+  byId('expense-form-note').textContent = '';
+  form.elements.id.value = expense?.id || '';
+  const fields = ['concert_id', 'category', 'description', 'amount', 'currency', 'expense_type', 'payment_status', 'due_date', 'supplier', 'notes'];
+  if (expense) fields.forEach(field => { form.elements[field].value = expense[field] ?? ''; });
+  else { form.elements.currency.value = 'PLN'; form.elements.expense_type.value = 'MANDATORY_FUTURE'; form.elements.payment_status.value = 'UNPAID'; }
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveExpense(event) {
+  event.preventDefault();
+  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти витрату.')) return;
+  const form = event.currentTarget;
+  const raw = Object.fromEntries(new FormData(form));
+  const id = raw.id;
+  const payload = { concert_id: raw.concert_id, category: raw.category.trim().toUpperCase(), description: raw.description.trim(), amount: Number(raw.amount), currency: raw.currency.trim().toUpperCase() || 'PLN', expense_type: raw.expense_type, due_date: raw.due_date || null, payment_status: raw.payment_status, supplier: raw.supplier.trim() || null, notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  byId('expense-form-note').textContent = 'Збереження…';
+  const result = id ? await db.from('daria_expenses').update(payload).eq('id', id) : await db.from('daria_expenses').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('expense-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  form.hidden = true;
+  setStatus(id ? 'Витрату оновлено у спільній базі' : 'Витрату додано до спільної бази');
+  await loadFinance();
+}
+
 function bookingValue(id) {
   const value = parseInt(byId(id)?.value, 10);
   return Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -256,6 +347,16 @@ function bindEvents() {
     if (button.dataset.action === 'details') selectConcert(button.dataset.id);
     if (button.dataset.action === 'edit') openConcertForm(concert);
   });
+  byId('add-expense').addEventListener('click', () => openExpenseForm());
+  byId('cancel-expense').addEventListener('click', () => { byId('expense-form').hidden = true; });
+  byId('expense-form').addEventListener('submit', saveExpense);
+  byId('expense-concert-filter').addEventListener('change', renderFinance);
+  byId('expense-payment-filter').addEventListener('change', renderFinance);
+  byId('expense-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-expense]');
+    if (!button) return;
+    openExpenseForm(state.expenses.find(expense => expense.id === button.dataset.editExpense));
+  });
   byId('save-booking').addEventListener('click', saveBooking);
 }
 
@@ -266,7 +367,7 @@ async function init() {
   if (initialView && document.querySelector(`[data-panel="${CSS.escape(initialView)}"]`)) showView(initialView);
   const { data } = await db.auth.getSession();
   updateAccess(data.session);
-  db.auth.onAuthStateChange((_event, session) => { updateAccess(session); loadOperations(); });
+  db.auth.onAuthStateChange((_event, session) => { updateAccess(session); loadOperations(); if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance(); });
   db.channel('booking-sales-live').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'booking_sales', filter: 'id=eq.1' }, payload => {
     bookingConcerts.forEach(concert => bookingOperators.forEach(([operator]) => { byId(`${concert.id}-${operator}`).value = payload.new[`${concert.id}_${operator}`] ?? ''; }));
     calculateBooking();
