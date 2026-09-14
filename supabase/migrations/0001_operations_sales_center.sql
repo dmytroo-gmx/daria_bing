@@ -115,3 +115,11 @@ create policy daria_orders_write on public.daria_orders for all using (public.da
 create policy daria_snapshots_read on public.daria_daily_sales_snapshots for select using (public.daria_has_role(array['ADMIN','MANAGER','VIEWER']));
 create policy daria_snapshots_write on public.daria_daily_sales_snapshots for all using (public.daria_has_role(array['ADMIN','MANAGER'])) with check (public.daria_has_role(array['ADMIN','MANAGER']));
 create policy daria_audit_read on public.daria_audit_log for select using (public.daria_has_role(array['ADMIN']));
+
+-- Equal workspace access for the three Legacy accounts. If an account has not
+-- yet used its magic link, sign in once and run this final statement again.
+insert into public.daria_user_roles (user_id, role)
+select id, 'MANAGER'
+from auth.users
+where lower(email) in ('dudodomu@gmail.com', 'decisiongreat1@gmail.com', 'legacyimperialconcerts@gmail.com')
+on conflict (user_id) do update set role = excluded.role;
