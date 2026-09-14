@@ -98,7 +98,15 @@ function concertCard(concert, compact = false) {
 }
 
 function renderConcerts() {
-  byId('dashboard-concerts').innerHTML = state.concerts.slice(0, 4).map(concert => concertCard(concert, true)).join('') || '<div class="empty">Концертів ще немає.</div>';
+  const period = byId('dashboard-period')?.value || 'ALL';
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const end = new Date(now); if (period === 'MONTH') end.setMonth(end.getMonth() + 1); else if (period !== 'ALL') end.setDate(end.getDate() + Number(period));
+  const dashboardConcerts = state.concerts.filter(concert => {
+    if (!['ON_SALE', 'ACTIVE'].includes(concert.status)) return false;
+    if (period === 'ALL' || !concert.event_date) return true;
+    const date = new Date(`${concert.event_date}T12:00:00`); return date >= now && date <= end;
+  });
+  byId('dashboard-concerts').innerHTML = dashboardConcerts.map(concert => concertCard(concert, true)).join('') || '<div class="empty">У вибраному періоді активних концертів немає.</div>';
   const filter = byId('concert-filter').value;
   const visible = filter === 'ALL' ? state.concerts : state.concerts.filter(concert => concert.status === filter);
   byId('concerts-list').innerHTML = visible.map(concert => concertCard(concert)).join('') || '<div class="empty">За цим фільтром концертів немає.</div>';
@@ -181,7 +189,7 @@ async function updateConcertStatus(id, nextStatus) {
 
 async function loadOperations() {
   if (!state.session) {
-    ['m-active', 'm-tickets', 'm-revenue', 'm-spend'].forEach(id => { byId(id).textContent = '—'; });
+    ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk'].forEach(id => { byId(id).textContent = '—'; });
     byId('dashboard-concerts').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб побачити операційні дані.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр концертів.</div>';
     byId('dashboard-note').classList.remove('error');
@@ -190,15 +198,17 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
-    db.from('daria_campaigns').select('actual_spend')
+    db.from('daria_campaigns').select('actual_spend'),
+    db.from('daria_expenses').select('amount,currency,expense_type,payment_status')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
   if (ordersResult.error) errors.push(`orders: ${ordersResult.error.message}`);
   if (campaignsResult.error) errors.push(`campaigns: ${campaignsResult.error.message}`);
+  if (expensesResult.error) errors.push(`expenses: ${expensesResult.error.message}`);
   if (concertsResult.error) {
     byId('dashboard-concerts').innerHTML = '<div class="empty">Немає доступу до реєстру концертів. Увійдіть у робочий акаунт.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Не вдалося завантажити концерти.</div>';
@@ -215,9 +225,17 @@ async function loadOperations() {
   byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(paidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
   byId('m-revenue').textContent = ordersResult.error ? '!' : money(paidOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0));
   byId('m-spend').textContent = campaignsResult.error ? '!' : money((campaignsResult.data || []).reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  const mandatory = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
+  const paid = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID');
+  const gross = paidOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
+  const mandatoryValue = mandatory.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+  const paidValue = paid.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+  byId('m-mandatory').textContent = expensesResult.error ? '!' : currencyTotals(mandatory);
+  byId('m-projected').textContent = expensesResult.error || ordersResult.error ? '!' : money(gross - paidValue - mandatoryValue);
+  byId('m-risk').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['YELLOW', 'RED'].includes(concert.risk_status)).length;
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
-  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : 'Актуально: PAID orders для продажів і revenue; campaigns.actual_spend для marketing spend.';
+  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : 'Факт: PAID orders, внесені витрати та campaigns.actual_spend. Операційний результат не включає поворотні застави й не є фінансовою рекомендацією.';
   if (!concertsResult.error) renderConcerts();
 }
 
@@ -226,6 +244,8 @@ function populateOrderOptions() {
   const operatorOptions = state.operators.map(operator => `<option value="${esc(operator.id)}">${esc(operator.name)}</option>`).join('');
   byId('order-concert').innerHTML = concertOptions;
   byId('order-operator').innerHTML = `<option value="">НЕ ВКАЗАНО</option>${operatorOptions}`;
+  const campaignOptions = state.campaigns.map(campaign => `<option value="${esc(campaign.id)}">${esc(campaign.source_code)} · ${esc(campaign.campaign_name)}</option>`).join('');
+  byId('order-campaign').innerHTML = `<option value="">НЕ ВСТАНОВЛЕНО — UNKNOWN</option>${campaignOptions}`;
   const selected = byId('order-concert-filter').value;
   byId('order-concert-filter').innerHTML = `<option value="ALL">УСІ</option>${concertOptions}`;
   if ([...byId('order-concert-filter').options].some(option => option.value === selected)) byId('order-concert-filter').value = selected;
@@ -256,11 +276,12 @@ async function loadSalesModule() {
     return;
   }
   if (!state.concerts.length) await loadOperations();
-  const [ordersResult, operatorsResult] = await Promise.all([
+  const [ordersResult, operatorsResult, campaignsResult] = await Promise.all([
     db.from('daria_orders').select('*').order('order_date', { ascending: false, nullsFirst: false }),
-    db.from('daria_ticketing_operators').select('id,name').order('name')
+    db.from('daria_ticketing_operators').select('id,name').order('name'),
+    db.from('daria_campaigns').select('id,campaign_name,source_code,concert_id').order('start_date', { ascending: false, nullsFirst: false })
   ]);
-  const errors = [ordersResult.error && `orders: ${ordersResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
+  const errors = [ordersResult.error && `orders: ${ordersResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`].filter(Boolean);
   if (errors.length) {
     byId('order-list').innerHTML = `<div class="empty">Не вдалося завантажити sales: ${esc(errors.join(' · '))}</div>`;
     byId('sales-note').classList.add('error');
@@ -268,6 +289,7 @@ async function loadSalesModule() {
   }
   state.orders = ordersResult.data || [];
   state.operators = operatorsResult.data || [];
+  state.campaigns = campaignsResult.data || [];
   populateOrderOptions();
   renderSales();
   byId('sales-note').classList.remove('error');
@@ -292,7 +314,7 @@ function openOrderForm(order = null) {
   byId('order-form-title').textContent = order ? order.external_order_id : 'Додати результат';
   byId('order-form-note').textContent = '';
   form.elements.id.value = order?.id || '';
-  const fields = ['concert_id', 'operator_id', 'external_order_id', 'ticket_count', 'gross_revenue', 'net_revenue', 'currency', 'source_code', 'attribution_type', 'promo_code', 'status', 'notes'];
+  const fields = ['concert_id', 'operator_id', 'campaign_id', 'external_order_id', 'ticket_count', 'gross_revenue', 'net_revenue', 'currency', 'source_code', 'attribution_type', 'promo_code', 'status', 'notes'];
   if (order) {
     fields.forEach(field => { form.elements[field].value = order[field] ?? ''; });
     form.elements.order_date.value = localDateTime(order.order_date);
@@ -308,7 +330,7 @@ async function saveOrder(event) {
   const form = event.currentTarget;
   const raw = Object.fromEntries(new FormData(form));
   const id = raw.id;
-  const payload = { concert_id: raw.concert_id, operator_id: raw.operator_id || null, external_order_id: raw.external_order_id.trim(), order_date: raw.order_date ? new Date(raw.order_date).toISOString() : null, ticket_count: Number(raw.ticket_count), gross_revenue: Number(raw.gross_revenue), net_revenue: numberOrNull(raw.net_revenue), currency: raw.currency.trim().toUpperCase() || 'PLN', source_code: raw.source_code.trim() || null, attribution_type: raw.attribution_type, promo_code: raw.promo_code.trim() || null, status: raw.status, notes: raw.notes.trim() };
+  const payload = { concert_id: raw.concert_id, operator_id: raw.operator_id || null, campaign_id: raw.campaign_id || null, external_order_id: raw.external_order_id.trim(), order_date: raw.order_date ? new Date(raw.order_date).toISOString() : null, ticket_count: Number(raw.ticket_count), gross_revenue: Number(raw.gross_revenue), net_revenue: numberOrNull(raw.net_revenue), currency: raw.currency.trim().toUpperCase() || 'PLN', source_code: raw.source_code.trim() || null, attribution_type: raw.attribution_type, promo_code: raw.promo_code.trim() || null, status: raw.status, notes: raw.notes.trim() };
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
   byId('order-form-note').textContent = 'Збереження…';
@@ -691,6 +713,13 @@ async function saveBooking() {
 function bindEvents() {
   document.querySelectorAll('.ops-nav button').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
   document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showView(button.dataset.go)));
+  byId('dashboard-period').addEventListener('change', () => { if (state.concerts.length) renderConcerts(); });
+  document.querySelectorAll('[data-quick]').forEach(button => button.addEventListener('click', async () => {
+    const target = button.dataset.quick;
+    showView(target === 'expense' ? 'finance' : 'channels');
+    if (target === 'expense') { await loadFinance(); openExpenseForm(); }
+    if (target === 'campaign') { await loadChannelsModule(); openCampaignForm(); }
+  }));
   byId('send-login').addEventListener('click', sendMagicLink);
   byId('add-concert').addEventListener('click', () => openConcertForm());
   byId('cancel-concert').addEventListener('click', () => { byId('concert-form').hidden = true; });
@@ -704,6 +733,7 @@ function bindEvents() {
     if (button.dataset.action === 'edit') openConcertForm(concert);
   });
   byId('add-order').addEventListener('click', () => openOrderForm());
+  byId('add-campaign-result').addEventListener('click', async () => { await loadSalesModule(); openOrderForm(); });
   byId('cancel-order').addEventListener('click', () => { byId('order-form').hidden = true; });
   byId('order-form').addEventListener('submit', saveOrder);
   byId('order-concert-filter').addEventListener('change', renderSales);
