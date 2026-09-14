@@ -33,6 +33,7 @@ function showView(view) {
   if (view === 'sales') loadSalesModule();
   if (view === 'channels') loadChannelsModule();
   if (view === 'operators') loadOperatorsModule();
+  if (view === 'reports') loadReportsModule();
   if (view === 'finance') loadFinance();
 }
 
@@ -484,6 +485,50 @@ async function saveOperator(event) {
   form.hidden = true; setStatus(id ? 'Оператора оновлено' : 'Оператора додано'); await Promise.all([loadOperatorsModule(), loadChannelsModule(), loadSalesModule()]);
 }
 
+function ratio(numerator, denominator, suffix = '') {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return '—';
+  return `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(numerator / denominator)}${suffix}`;
+}
+
+function reportCard(concert, orders, expenses, campaigns) {
+  const paid = orders.filter(order => order.status === 'PAID');
+  const paidTickets = paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
+  const campaignOrders = paid.filter(order => order.campaign_id);
+  const paidExpenses = expenses.filter(expense => expense.payment_status === 'PAID');
+  const mandatory = expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID');
+  const spend = campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0);
+  const platformOrders = campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_orders) || 0), 0);
+  const platformValue = campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_value) || 0), 0);
+  const confirmedGross = campaignOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
+  return `<article class="report-card"><p class="eyebrow">${esc(concert.status)} · ${esc(concert.risk_status)}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'майданчик не задано')}</small><div class="report-grid"><div class="report-item"><span>PAID TICKETS</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>PAID GROSS</span><strong>${currencyTotals(paid, 'gross_revenue')}</strong></div><div class="report-item"><span>ACTUAL SPEND</span><strong>${money(spend)}</strong></div><div class="report-item"><span>PAID EXPENSES</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>MANDATORY FUTURE</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>UNATTRIBUTED PAID</span><strong>${fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0))}</strong></div><div class="report-item"><span>PLATFORM ORDERS</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>CAMPAIGNS</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>Platform CPA</b>${ratio(spend, platformOrders, ' zł')}<br><small>actual spend / platform orders</small></div><div><b>Confirmed CPA</b>${ratio(spend, campaignOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0), ' zł')}<br><small>actual spend / paid orders з campaign_id</small></div><div><b>Platform ROAS</b>${ratio(platformValue, spend, '×')}<br><small>platform value / actual spend</small></div></div></article>`;
+}
+
+async function loadReportsModule() {
+  if (!state.session) {
+    ['r-concerts', 'r-paid-tickets', 'r-spend', 'r-unattributed'].forEach(id => { byId(id).textContent = '—'; });
+    byId('report-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб побачити звіти.</div>';
+    byId('reports-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як нуль.';
+    return;
+  }
+  const [concertsResult, ordersResult, expensesResult, campaignsResult] = await Promise.all([
+    db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
+    db.from('daria_orders').select('concert_id,campaign_id,ticket_count,gross_revenue,currency,status'),
+    db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status'),
+    db.from('daria_campaigns').select('concert_id,actual_spend,platform_reported_orders,platform_reported_value')
+  ]);
+  const errors = [concertsResult.error && `concerts: ${concertsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`, expensesResult.error && `expenses: ${expensesResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`].filter(Boolean);
+  if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не вдалося зібрати звіт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
+  const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [];
+  const paid = orders.filter(order => order.status === 'PAID');
+  byId('r-concerts').textContent = concerts.length;
+  byId('r-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
+  byId('r-spend').textContent = money(campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  byId('r-unattributed').textContent = fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
+  byId('report-list').innerHTML = concerts.map(concert => reportCard(concert, orders.filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), campaigns.filter(campaign => campaign.concert_id === concert.id))).join('') || '<div class="empty">Концертів ще немає.</div>';
+  byId('reports-note').classList.remove('error');
+  byId('reports-note').textContent = 'CPA і ROAS показано лише як відношення внесених даних. Platform і confirmed навмисно не об’єднуються.';
+}
+
 function amountMap(items, field = 'amount') {
   const totals = new Map();
   items.forEach(item => totals.set(item.currency || 'PLN', (totals.get(item.currency || 'PLN') || 0) + (Number(item[field]) || 0)));
@@ -700,6 +745,7 @@ async function init() {
     if (document.querySelector('[data-panel="sales"]').classList.contains('active')) loadSalesModule();
     if (document.querySelector('[data-panel="channels"]').classList.contains('active')) loadChannelsModule();
     if (document.querySelector('[data-panel="operators"]').classList.contains('active')) loadOperatorsModule();
+    if (document.querySelector('[data-panel="reports"]').classList.contains('active')) loadReportsModule();
     if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance();
   });
   db.channel('booking-sales-live').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'booking_sales', filter: 'id=eq.1' }, payload => {

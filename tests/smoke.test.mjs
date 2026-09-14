@@ -80,6 +80,15 @@ test('operators preserve contract capabilities and unknown fields', () => {
   assert.match(js, /Порожнє поле означає «не зафіксовано»/);
 });
 
+test('reports label platform and confirmed attribution separately', () => {
+  assert.match(html, /id="report-list"/);
+  assert.match(js, /Platform CPA/);
+  assert.match(js, /Confirmed CPA/);
+  assert.match(js, /Platform ROAS/);
+  assert.match(js, /async function loadReportsModule/);
+  assert.match(js, /Platform і confirmed навмисно не об’єднуються/);
+});
+
 test('legacy booking remains available and the responsive stylesheet loads', () => {
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);

@@ -90,7 +90,12 @@
         <div class="full editor-actions"><button class="button" type="submit">ЗБЕРЕГТИ</button><span class="form-note" id="expense-form-note"></span></div>
       </form>
     </section>
-    <section class="view" id="view-reports" data-panel="reports"><div class="module-placeholder"><p class="eyebrow">REPORTS</p><h1>Звіти</h1><p>Наступний модуль: імпорт, графіки, контроль якості даних і зрізи за концертами.</p></div></section>
+    <section class="view" id="view-reports" data-panel="reports">
+      <div class="section-head"><div><p class="eyebrow">REPORTS</p><h1>Операційний зріз</h1></div><p class="section-copy">Звіт показує внесені факти й окремо маркує платформні сигнали. Він не є фінансовим рішенням або прогнозом.</p></div>
+      <div class="metrics"><article class="metric"><span>КОНЦЕРТИ В РЕЄСТРІ</span><strong id="r-concerts">—</strong><small>усі статуси</small></article><article class="metric"><span>PAID TICKETS</span><strong id="r-paid-tickets">—</strong><small>підтверджені orders</small></article><article class="metric"><span>ACTUAL SPEND</span><strong id="r-spend">—</strong><small>campaigns.actual_spend</small></article><article class="metric"><span>UNATTRIBUTED PAID</span><strong id="r-unattributed">—</strong><small>без campaign_id</small></article></div>
+      <div class="report-list" id="report-list"><div class="empty">Увійдіть, щоб побачити звіти.</div></div>
+      <div class="truth-note" id="reports-note">CPA та ROAS відображаються лише за наявності чисельника й знаменника, з позначкою джерела.</div>
+    </section>
 
     <section class="view" id="view-booking" data-panel="booking">
       <div class="section-head"><div><p class="eyebrow">BOOKING</p><h1>Продажі за операторами</h1><p class="section-copy">Сумісний модуль старого booking dashboard. Дані зберігаються у спільній таблиці booking_sales.</p></div><button class="button" id="save-booking" type="button">ЗБЕРЕГТИ ЗМІНИ</button></div>
