@@ -32,6 +32,7 @@ function showView(view) {
   if (view === 'concerts') loadOperations();
   if (view === 'sales') loadSalesModule();
   if (view === 'channels') loadChannelsModule();
+  if (view === 'operators') loadOperatorsModule();
   if (view === 'finance') loadFinance();
 }
 
@@ -431,6 +432,58 @@ async function saveTrackingLink(event) {
   form.hidden = true; setStatus(id ? 'Tracking link оновлено' : 'Tracking link додано'); await loadChannelsModule();
 }
 
+function commission(value) { return value == null ? '—' : `${Number(value).toLocaleString('pl-PL', { maximumFractionDigits: 4 })}%`; }
+
+function renderOperators() {
+  byId('operator-list').innerHTML = state.operators.map(operator => `<article class="operator-card"><p class="eyebrow">${esc(operator.legacy_recommendation)}</p><h2>${esc(operator.name)}</h2><p><b>Marketplace / own:</b> ${commission(operator.marketplace_commission)} / ${commission(operator.own_sales_commission)}</p><p><b>Tracking:</b> Pixel ${operator.supports_meta_pixel ? '✓' : '—'} · CAPI ${operator.supports_capi ? '✓' : '—'} · GTM ${operator.supports_gtm ? '✓' : '—'}</p><p><b>Дані:</b> ${esc(operator.customer_data_access || 'не вказано')}</p><p><b>Виплата:</b> ${esc(operator.payout_timing || 'не вказано')}</p><button class="text-button" type="button" data-edit-operator="${esc(operator.id)}">РЕДАГУВАТИ</button></article>`).join('') || '<div class="empty">Операторів ще немає.</div>';
+}
+
+async function loadOperatorsModule() {
+  if (!state.session) {
+    byId('operator-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити операторів.</div>';
+    byId('operators-note').textContent = 'Дані приховані політиками доступу; відсутність відповіді не означає відсутність умов договору.';
+    return;
+  }
+  const { data, error } = await db.from('daria_ticketing_operators').select('*').order('name');
+  if (error) {
+    byId('operator-list').innerHTML = `<div class="empty">Не вдалося завантажити операторів: ${esc(error.message)}</div>`;
+    byId('operators-note').classList.add('error');
+    return;
+  }
+  state.operators = data || [];
+  renderOperators();
+  byId('operators-note').classList.remove('error');
+  byId('operators-note').textContent = 'Відображені лише внесені умови. Порожнє поле означає «не зафіксовано», а не «немає».';
+}
+
+function openOperatorForm(operator = null) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати операторів.')) return;
+  const form = byId('operator-form'); form.reset(); form.hidden = false;
+  byId('operator-form-mode').textContent = operator ? 'РЕДАГУВАННЯ ОПЕРАТОРА' : 'НОВИЙ ОПЕРАТОР'; byId('operator-form-title').textContent = operator ? operator.name : 'Додати оператора'; byId('operator-form-note').textContent = ''; form.elements.id.value = operator?.id || '';
+  const fields = ['name', 'website', 'marketplace_commission', 'own_sales_commission', 'payment_provider_fee', 'setup_fee', 'monthly_fee', 'capi_fee', 'customer_data_access', 'customer_email_access', 'customer_phone_access', 'payout_timing', 'exclusive_required', 'exclusive_terms', 'negotiation_status', 'legacy_recommendation', 'contract_notes', 'notes'];
+  const flags = ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'supports_statistical_links', 'supports_promo_codes', 'has_marketplace', 'sms_marketing_available', 'email_marketing_available'];
+  if (operator) { fields.forEach(field => { form.elements[field].value = operator[field] ?? ''; }); flags.forEach(flag => { form.elements[flag].checked = Boolean(operator[flag]); }); }
+  else { form.elements.negotiation_status.value = 'TO_BE_CLARIFIED'; form.elements.legacy_recommendation.value = 'NEGOTIATING'; }
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveOperator(event) {
+  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти оператора.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), id = raw.id;
+  const numberFields = ['marketplace_commission', 'own_sales_commission', 'payment_provider_fee', 'setup_fee', 'monthly_fee', 'capi_fee'];
+  const textFields = ['website', 'customer_data_access', 'customer_email_access', 'customer_phone_access', 'payout_timing', 'exclusive_required', 'exclusive_terms', 'negotiation_status', 'legacy_recommendation', 'contract_notes', 'notes'];
+  const flags = ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'supports_statistical_links', 'supports_promo_codes', 'has_marketplace', 'sms_marketing_available', 'email_marketing_available'];
+  const payload = { name: raw.name.trim(), updated_at: new Date().toISOString() };
+  numberFields.forEach(field => { payload[field] = numberOrNull(raw[field]); });
+  textFields.forEach(field => { payload[field] = raw[field]?.trim() || (['contract_notes', 'notes'].includes(field) ? '' : null); });
+  flags.forEach(flag => { payload[flag] = form.elements[flag].checked; });
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('operator-form-note').textContent = 'Збереження…';
+  const result = id ? await db.from('daria_ticketing_operators').update(payload).eq('id', id) : await db.from('daria_ticketing_operators').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('operator-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(id ? 'Оператора оновлено' : 'Оператора додано'); await Promise.all([loadOperatorsModule(), loadChannelsModule(), loadSalesModule()]);
+}
+
 function amountMap(items, field = 'amount') {
   const totals = new Map();
   items.forEach(item => totals.set(item.currency || 'PLN', (totals.get(item.currency || 'PLN') || 0) + (Number(item[field]) || 0)));
@@ -614,6 +667,13 @@ function bindEvents() {
     const button = event.target.closest('[data-edit-link]');
     if (button) openTrackingForm(state.trackingLinks.find(link => link.id === button.dataset.editLink));
   });
+  byId('add-operator').addEventListener('click', () => openOperatorForm());
+  byId('cancel-operator').addEventListener('click', () => { byId('operator-form').hidden = true; });
+  byId('operator-form').addEventListener('submit', saveOperator);
+  byId('operator-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-operator]');
+    if (button) openOperatorForm(state.operators.find(operator => operator.id === button.dataset.editOperator));
+  });
   byId('add-expense').addEventListener('click', () => openExpenseForm());
   byId('cancel-expense').addEventListener('click', () => { byId('expense-form').hidden = true; });
   byId('expense-form').addEventListener('submit', saveExpense);
@@ -639,6 +699,7 @@ async function init() {
     loadOperations();
     if (document.querySelector('[data-panel="sales"]').classList.contains('active')) loadSalesModule();
     if (document.querySelector('[data-panel="channels"]').classList.contains('active')) loadChannelsModule();
+    if (document.querySelector('[data-panel="operators"]').classList.contains('active')) loadOperatorsModule();
     if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance();
   });
   db.channel('booking-sales-live').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'booking_sales', filter: 'id=eq.1' }, payload => {

@@ -73,6 +73,13 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /Platform orders не додаються до confirmed sales автоматично/);
 });
 
+test('operators preserve contract capabilities and unknown fields', () => {
+  assert.match(html, /id="operator-form"/);
+  for (const field of ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'customer_data_access', 'payout_timing', 'legacy_recommendation']) assert.match(html, new RegExp(`name="${field}"`));
+  assert.match(js, /daria_ticketing_operators'\)\.select\('\*'\)/);
+  assert.match(js, /Порожнє поле означає «не зафіксовано»/);
+});
+
 test('legacy booking remains available and the responsive stylesheet loads', () => {
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);
