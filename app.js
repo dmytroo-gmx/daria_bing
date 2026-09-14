@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, concerts: [], totals: new Map(), selectedConcertId: null, expenses: [], orders: [], operators: [] };
+const state = { session: null, concerts: [], totals: new Map(), selectedConcertId: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -31,6 +31,7 @@ function showView(view) {
   setStatus(state.session ? `Спільна база · ${state.session.user.email}` : 'Режим перегляду · увійдіть для редагування');
   if (view === 'concerts') loadOperations();
   if (view === 'sales') loadSalesModule();
+  if (view === 'channels') loadChannelsModule();
   if (view === 'finance') loadFinance();
 }
 
@@ -295,6 +296,141 @@ async function saveOrder(event) {
   await Promise.all([loadSalesModule(), loadOperations()]);
 }
 
+function setSelectOptions(id, options, includeEmpty = false, emptyLabel = 'НЕ ВКАЗАНО') {
+  byId(id).innerHTML = `${includeEmpty ? `<option value="">${emptyLabel}</option>` : ''}${options}`;
+}
+
+function populateChannelOptions() {
+  const concerts = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
+  const channels = state.channels.map(channel => `<option value="${esc(channel.id)}">${esc(channel.name)} · ${esc(channel.code)}</option>`).join('');
+  const campaigns = state.campaigns.map(campaign => `<option value="${esc(campaign.id)}">${esc(campaign.campaign_name)} · ${esc(campaign.source_code)}</option>`).join('');
+  const operators = state.operators.map(operator => `<option value="${esc(operator.id)}">${esc(operator.name)}</option>`).join('');
+  setSelectOptions('campaign-concert', concerts);
+  setSelectOptions('campaign-channel', channels);
+  setSelectOptions('tracking-concert', concerts);
+  setSelectOptions('tracking-campaign', campaigns, true);
+  setSelectOptions('tracking-channel', channels, true);
+  setSelectOptions('tracking-operator', operators, true);
+}
+
+function renderChannels() {
+  byId('channel-list').innerHTML = state.channels.map(channel => `<article class="ops-concert"><div><small>${esc(channel.code)}</small><h3>${esc(channel.name)}</h3><small>${channel.is_active ? 'ACTIVE' : 'INACTIVE'}</small></div><button class="text-button" type="button" data-edit-channel="${esc(channel.id)}">РЕДАГУВАТИ</button></article>`).join('') || '<div class="empty">Каналів ще немає.</div>';
+  byId('campaign-list').innerHTML = state.campaigns.map(campaign => {
+    const channel = state.channels.find(item => item.id === campaign.channel_id);
+    const concert = state.concerts.find(item => item.id === campaign.concert_id);
+    return `<article class="ops-concert"><div><small>${esc(campaign.status)} · ${esc(campaign.attribution_quality)} · ${esc(channel?.name || 'канал не знайдено')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не знайдено')} · spend ${money(campaign.actual_spend)} · platform orders ${fmt(campaign.platform_reported_orders)}</small></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">РЕДАГУВАТИ</button></article>`;
+  }).join('') || '<div class="empty">Кампаній ще немає.</div>';
+  byId('tracking-link-list').innerHTML = state.trackingLinks.map(link => {
+    const campaign = state.campaigns.find(item => item.id === link.campaign_id);
+    const channel = state.channels.find(item => item.id === link.channel_id);
+    return `<article class="expense-row"><div><small>${esc(link.status)} · ${esc(channel?.name || 'канал не вказано')} · ${esc(campaign?.campaign_name || 'кампанія не вказана')}</small><h3>${esc(link.source_code)}</h3><small>${esc(link.destination_url || link.statistical_url || 'URL не задано')}</small></div><strong class="expense-amount">${esc(link.utm_source || '—')} / ${esc(link.utm_medium || '—')}</strong><div class="expense-meta"><span>${esc(link.promo_code || 'без promo code')}</span><span>${link.utm_campaign ? `utm: ${esc(link.utm_campaign)}` : 'utm campaign не задано'}</span></div><button class="text-button" type="button" data-edit-link="${esc(link.id)}">РЕДАГУВАТИ</button></article>`;
+  }).join('') || '<div class="empty">Tracking links ще немає.</div>';
+  byId('c-active').textContent = state.campaigns.filter(campaign => ['TESTING', 'WORKING'].includes(campaign.status)).length;
+  byId('c-spend').textContent = money(state.campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  byId('c-platform-orders').textContent = fmt(state.campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_orders) || 0), 0));
+  byId('c-active-links').textContent = state.trackingLinks.filter(link => link.status === 'ACTIVE').length;
+}
+
+async function loadChannelsModule() {
+  if (!state.session) {
+    ['c-active', 'c-spend', 'c-platform-orders', 'c-active-links'].forEach(id => { byId(id).textContent = '—'; });
+    byId('channel-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити канали.</div>';
+    byId('campaign-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити кампанії.</div>';
+    byId('tracking-link-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити посилання.</div>';
+    byId('channels-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як відсутність кампаній.';
+    state.channels = []; state.campaigns = []; state.trackingLinks = [];
+    return;
+  }
+  if (!state.concerts.length) await loadOperations();
+  const [channelsResult, campaignsResult, linksResult, operatorsResult] = await Promise.all([
+    db.from('daria_sales_channels').select('*').order('name'),
+    db.from('daria_campaigns').select('*').order('start_date', { ascending: false, nullsFirst: false }),
+    db.from('daria_tracking_links').select('*').order('created_at', { ascending: false }),
+    db.from('daria_ticketing_operators').select('id,name').order('name')
+  ]);
+  const errors = [channelsResult.error && `channels: ${channelsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, linksResult.error && `links: ${linksResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
+  if (errors.length) {
+    byId('channels-note').classList.add('error');
+    byId('channels-note').textContent = `Частину даних не завантажено: ${errors.join(' · ')}`;
+    return;
+  }
+  state.channels = channelsResult.data || [];
+  state.campaigns = campaignsResult.data || [];
+  state.trackingLinks = linksResult.data || [];
+  state.operators = operatorsResult.data || state.operators;
+  populateChannelOptions();
+  renderChannels();
+  byId('channels-note').classList.remove('error');
+  byId('channels-note').textContent = 'Platform orders не додаються до confirmed sales автоматично. Зв’язок з order зберігається окремо через source code, campaign і tracking link.';
+}
+
+function openChannelForm(channel = null) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати канали.')) return;
+  const form = byId('channel-form'); form.reset(); form.hidden = false;
+  byId('channel-form-mode').textContent = channel ? 'РЕДАГУВАННЯ КАНАЛУ' : 'НОВИЙ КАНАЛ';
+  byId('channel-form-title').textContent = channel ? channel.name : 'Додати канал';
+  byId('channel-form-note').textContent = ''; form.elements.id.value = channel?.id || '';
+  if (channel) { form.elements.name.value = channel.name; form.elements.code.value = channel.code; form.elements.is_active.checked = channel.is_active; }
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveChannel(event) {
+  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти канал.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const payload = { name: raw.name.trim(), code: raw.code.trim().toUpperCase(), is_active: form.elements.is_active.checked };
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('channel-form-note').textContent = 'Збереження…';
+  const result = raw.id ? await db.from('daria_sales_channels').update(payload).eq('id', raw.id) : await db.from('daria_sales_channels').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('channel-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(raw.id ? 'Канал оновлено' : 'Канал додано'); await loadChannelsModule();
+}
+
+function openCampaignForm(campaign = null) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати кампанії.')) return;
+  if (!state.concerts.length || !state.channels.length) { setStatus('Спочатку додайте концерт і канал.', true); return; }
+  const form = byId('campaign-form'); populateChannelOptions(); form.reset(); form.hidden = false;
+  byId('campaign-form-mode').textContent = campaign ? 'РЕДАГУВАННЯ КАМПАНІЇ' : 'НОВА КАМПАНІЯ'; byId('campaign-form-title').textContent = campaign ? campaign.campaign_name : 'Додати кампанію'; byId('campaign-form-note').textContent = ''; form.elements.id.value = campaign?.id || '';
+  const fields = ['concert_id', 'channel_id', 'campaign_name', 'source_code', 'planned_budget', 'actual_spend', 'start_date', 'end_date', 'status', 'attribution_quality', 'entries', 'platform_reported_orders', 'platform_reported_value', 'notes'];
+  if (campaign) fields.forEach(field => { form.elements[field].value = campaign[field] ?? ''; });
+  else { form.elements.status.value = 'TESTING'; form.elements.attribution_quality.value = 'UNKNOWN'; }
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveCampaign(event) {
+  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти кампанію.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: raw.source_code.trim(), planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-form-note').textContent = 'Збереження…';
+  const result = id ? await db.from('daria_campaigns').update(payload).eq('id', id) : await db.from('daria_campaigns').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('campaign-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(id ? 'Кампанію оновлено' : 'Кампанію додано'); await Promise.all([loadChannelsModule(), loadOperations()]);
+}
+
+function openTrackingForm(link = null) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати tracking links.')) return;
+  if (!state.concerts.length) { setStatus('Спочатку додайте концерт.', true); return; }
+  const form = byId('tracking-link-form'); populateChannelOptions(); form.reset(); form.hidden = false;
+  byId('tracking-form-mode').textContent = link ? 'РЕДАГУВАННЯ ПОСИЛАННЯ' : 'НОВЕ ПОСИЛАННЯ'; byId('tracking-form-title').textContent = link ? link.source_code : 'Додати tracking link'; byId('tracking-form-note').textContent = ''; form.elements.id.value = link?.id || '';
+  const fields = ['concert_id', 'campaign_id', 'operator_id', 'channel_id', 'source_code', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code', 'status', 'notes'];
+  if (link) fields.forEach(field => { form.elements[field].value = link[field] ?? ''; });
+  else form.elements.status.value = 'ACTIVE';
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveTrackingLink(event) {
+  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти tracking link.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), id = raw.id;
+  const nullable = ['campaign_id', 'operator_id', 'channel_id', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code'];
+  const payload = { concert_id: raw.concert_id, source_code: raw.source_code.trim(), status: raw.status, notes: raw.notes.trim() };
+  nullable.forEach(field => { payload[field] = raw[field]?.trim() || null; });
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('tracking-form-note').textContent = 'Збереження…';
+  const result = id ? await db.from('daria_tracking_links').update(payload).eq('id', id) : await db.from('daria_tracking_links').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('tracking-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(id ? 'Tracking link оновлено' : 'Tracking link додано'); await loadChannelsModule();
+}
+
 function amountMap(items, field = 'amount') {
   const totals = new Map();
   items.forEach(item => totals.set(item.currency || 'PLN', (totals.get(item.currency || 'PLN') || 0) + (Number(item[field]) || 0)));
@@ -457,6 +593,27 @@ function bindEvents() {
     if (!button) return;
     openOrderForm(state.orders.find(order => order.id === button.dataset.editOrder));
   });
+  byId('add-channel').addEventListener('click', () => openChannelForm());
+  byId('cancel-channel').addEventListener('click', () => { byId('channel-form').hidden = true; });
+  byId('channel-form').addEventListener('submit', saveChannel);
+  byId('channel-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-channel]');
+    if (button) openChannelForm(state.channels.find(channel => channel.id === button.dataset.editChannel));
+  });
+  byId('add-campaign').addEventListener('click', () => openCampaignForm());
+  byId('cancel-campaign').addEventListener('click', () => { byId('campaign-form').hidden = true; });
+  byId('campaign-form').addEventListener('submit', saveCampaign);
+  byId('campaign-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-campaign]');
+    if (button) openCampaignForm(state.campaigns.find(campaign => campaign.id === button.dataset.editCampaign));
+  });
+  byId('add-tracking-link').addEventListener('click', () => openTrackingForm());
+  byId('cancel-tracking-link').addEventListener('click', () => { byId('tracking-link-form').hidden = true; });
+  byId('tracking-link-form').addEventListener('submit', saveTrackingLink);
+  byId('tracking-link-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-link]');
+    if (button) openTrackingForm(state.trackingLinks.find(link => link.id === button.dataset.editLink));
+  });
   byId('add-expense').addEventListener('click', () => openExpenseForm());
   byId('cancel-expense').addEventListener('click', () => { byId('expense-form').hidden = true; });
   byId('expense-form').addEventListener('submit', saveExpense);
@@ -481,6 +638,7 @@ async function init() {
     updateAccess(session);
     loadOperations();
     if (document.querySelector('[data-panel="sales"]').classList.contains('active')) loadSalesModule();
+    if (document.querySelector('[data-panel="channels"]').classList.contains('active')) loadChannelsModule();
     if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance();
   });
   db.channel('booking-sales-live').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'booking_sales', filter: 'id=eq.1' }, payload => {

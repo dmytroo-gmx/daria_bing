@@ -65,6 +65,14 @@ test('finance keeps expense classes and currencies separate', () => {
   assert.doesNotMatch(js, /reduce\([^\n]+currency[^\n]+amount/);
 });
 
+test('channels preserve the separation of channels, campaigns and tracking links', () => {
+  for (const id of ['channel-form', 'campaign-form', 'tracking-link-form']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(js, /daria_sales_channels'\)\.select\('\*'\)/);
+  assert.match(js, /daria_campaigns'\)\.select\('\*'\)/);
+  assert.match(js, /daria_tracking_links'\)\.select\('\*'\)/);
+  assert.match(js, /Platform orders не додаються до confirmed sales автоматично/);
+});
+
 test('legacy booking remains available and the responsive stylesheet loads', () => {
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);
