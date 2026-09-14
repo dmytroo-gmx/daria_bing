@@ -37,6 +37,17 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
 });
 
+test('sales keeps payment state and attribution evidence distinct', () => {
+  assert.match(html, /id="order-form"/);
+  assert.match(html, /CONFIRMED/);
+  assert.match(html, /PLATFORM_ATTRIBUTED/);
+  assert.match(html, /UNKNOWN/);
+  assert.match(js, /order\.status === 'PAID'/);
+  assert.match(js, /order\.status === 'REFUNDED'/);
+  assert.match(js, /currencyTotals\(paid, 'gross_revenue'\)/);
+  assert.match(js, /daria_orders'\)\.select\('\*'\)/);
+});
+
 test('unauthenticated empty RLS results are not presented as zero', () => {
   assert.match(js, /Порожня відповідь без авторизації не трактується як нуль/);
   assert.match(js, /if \(!state\.session\)/);
