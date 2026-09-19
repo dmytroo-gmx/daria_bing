@@ -22,6 +22,7 @@ test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(html, /id="snapshot-form"/);
   assert.match(js, /function saveSnapshot/);
   assert.match(js, /function snapshotChanges/);
+  assert.match(js, /function snapshotTimelines/);
   assert.match(js, /data-open-detail-document/);
   assert.match(js, /function checklistItem/);
   assert.match(js, /data-detail-action/);
@@ -127,6 +128,7 @@ test('daily sales snapshots retain a source document rather than becoming unsupp
   assert.match(js, /source_document_id: raw\.source_document_id/);
   assert.match(html, /Не додавай сюди загальні суми різних операторів/);
   assert.match(js, /Різних операторів тут не складаємо/);
+  assert.match(css, /\.snapshot-bars/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {
