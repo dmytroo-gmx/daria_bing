@@ -98,7 +98,7 @@ test('channels preserve the separation of channels, campaigns and tracking links
 test('documents keep PDF evidence and CSV imports separate from operational facts', async () => {
   const migration = await readFile(new URL('../supabase/migrations/0005_source_documents_pdf_first.sql', import.meta.url), 'utf8');
   assert.match(html, /id="document-form"/);
-  assert.match(html, /PDF — первинний доказ/);
+  assert.match(html, /Документ — первичный источник/);
   assert.match(js, /const documentBucket = 'legacy-brain-source-documents'/);
   assert.match(js, /createSignedUrl/);
   assert.match(js, /не змінює дані автоматично/);
