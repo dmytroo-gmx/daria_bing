@@ -15,7 +15,7 @@ test('the product is branded Legacy Brain', () => {
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
-  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'CHECKLIST', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
   assert.match(js, /data-detail-tab/);
   assert.match(js, /daria_audit_log/);
@@ -23,6 +23,8 @@ test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /function saveSnapshot/);
   assert.match(js, /function snapshotChanges/);
   assert.match(js, /data-open-detail-document/);
+  assert.match(js, /function checklistItem/);
+  assert.match(js, /data-detail-action/);
 });
 
 test('every navigation item has a separate panel', () => {

@@ -129,7 +129,11 @@ function snapshotChanges(snapshots) {
   });
 }
 
-const detailTabs = ['OVERVIEW', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
+const detailTabs = ['OVERVIEW', 'CHECKLIST', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
+
+function checklistItem(done, title, copy, action = '') {
+  return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОДАТИ ДЖЕРЕЛО' : 'ДОДАТИ ЗРІЗ'}</button>` : ''}</span></div>`;
+}
 
 function renderConcertDetail() {
   const concert = state.concerts.find(item => item.id === state.selectedConcertId);
@@ -142,6 +146,7 @@ function renderConcertDetail() {
   const tabs = detailTabs.map(tab => `<button type="button" class="detail-tab ${state.detailTab === tab ? 'active' : ''}" data-detail-tab="${tab}">${tab}</button>`).join('');
   let content = '';
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО PAID', fmt(sold))}${detailValue('ЗАЛИШОК', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОВНЕННЯ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ДО BREAK-EVEN', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue('GROSS REVENUE', money(metric.gross_revenue, concert.currency))}${detailValue('NET REVENUE', money(metric.net_revenue, concert.currency))}${detailValue('ВЖЕ СПЛАЧЕНО', money(metric.already_spent, concert.currency))}${detailValue('ОБОВʼЯЗКОВО ПОПЕРЕДУ', money(metric.mandatory_future, concert.currency))}${detailValue('ПОВОРОТНІ ЗАСТАВИ', money(metric.refundable_deposits, concert.currency))}${detailValue('ОПЕРАЦІЙНИЙ РЕЗУЛЬТАТ', money(metric.operational_result, concert.currency))}</div><div class="truth-note">${detail.server ? 'Метрики розраховані в Supabase. Валюти не конвертуються автоматично.' : 'Серверні метрики ще не завантажені; показано лише доступний локальний підсумок.'}</div>`;
+  if (state.detailTab === 'CHECKLIST') { const sourceReady = detail.documents.length > 0, snapshotsReady = detail.snapshots.length > 0, sourcedSnapshots = detail.snapshots.filter(snapshot => snapshot.source_document_id).length; content = `<div class="truth-note">Це технічна готовність даних, не оцінка фінансового стану концерту.</div>${checklistItem(sourceReady, 'Джерело для концерту', sourceReady ? `${fmt(detail.documents.length)} PDF/CSV прив’язано` : 'Спершу потрібен PDF або CSV від оператора / Meta', sourceReady ? '' : 'source')}${checklistItem(snapshotsReady, 'Щоденний зріз продажів', snapshotsReady ? `${fmt(detail.snapshots.length)} зрізів внесено` : 'Після джерела внеси перший зріз по одному оператору', snapshotsReady || !sourceReady ? '' : 'snapshot')}${checklistItem(!snapshotsReady || sourcedSnapshots === detail.snapshots.length, 'Докази для зрізів', !snapshotsReady ? 'Зрізів ще немає' : `${fmt(sourcedSnapshots)} з ${fmt(detail.snapshots.length)} зрізів мають документ-джерело`)}`; }
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} кв. · ${money(order.gross_revenue, order.currency)} · ${esc(order.attribution_type)}</span></div>`).join('') || '<div class="empty">Записів ще немає.</div>'; }
   if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОДАТИ ЩОДЕННИЙ ЗРІЗ</button><div class="truth-note">Зміна рахується лише між двома останніми зрізами одного оператора та тієї самої валюти. Різних операторів тут не складаємо.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не вказаний')} · станом на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} кв. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · зміна: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} кв.${change.revenueDelta == null ? ' · інша валюта — без зміни виручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · попереднього зрізу ще немає'} · ${esc(change.latest.source_name || 'джерело не прив’язано')}</span></div>`).join('') || '<div class="empty">Щоденних зрізів ще немає.</div>'}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не вказаний'} · ${snapshot.source_name || 'джерело не прив’язано'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
   if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата джерела не задана')} · ${esc(document.import_status)}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ВІДКРИТИ</button></span></div>`).join('') || '<div class="empty">До цього концерту ще не прив’язано PDF або CSV-джерел.</div>';
@@ -154,6 +159,10 @@ function renderConcertDetail() {
   document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
   const addSnapshot = document.querySelector('[data-add-snapshot]');
   if (addSnapshot) addSnapshot.addEventListener('click', () => openSnapshotForm(concert));
+  document.querySelectorAll('[data-detail-action]').forEach(button => button.addEventListener('click', async () => {
+    if (button.dataset.detailAction === 'source') { showView('documents'); await loadOperations(); openDocumentForm(concert); }
+    if (button.dataset.detailAction === 'snapshot') openSnapshotForm(concert);
+  }));
   document.querySelectorAll('[data-open-detail-document]').forEach(button => button.addEventListener('click', () => openDocumentRecord(detail.documents.find(document => document.id === button.dataset.openDetailDocument))));
   byId('quick-status').addEventListener('change', event => updateConcertStatus(concert.id, event.target.value));
   byId('edit-selected').addEventListener('click', () => openConcertForm(concert));
@@ -464,12 +473,13 @@ async function loadDocumentsModule() {
   byId('documents-note').textContent = 'PDF — первинне джерело. CSV Meta та операторів зберігається для перевірки й не змінює дані автоматично.';
 }
 
-function openDocumentForm() {
+function openDocumentForm(concert = null) {
   if (!requireEditor('Увійдіть через робочу пошту, щоб завантажити документ.')) return;
   const form = byId('document-form');
   form.reset(); form.hidden = false; byId('document-form-note').textContent = '';
   const options = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
   setSelectOptions('document-concert', options, true, 'НЕ ПРИВ’ЯЗАНО');
+  if (concert) form.elements.concert_id.value = concert.id;
 }
 
 async function saveDocument(event) {
