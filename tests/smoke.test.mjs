@@ -205,6 +205,12 @@ test('server-side metrics and audit logging are present in the additive migratio
   assert.match(migration, /daria_audit_campaigns/);
 });
 
+test('campaign platform delivery metrics have an additive migration', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0009_campaign_platform_reach_metrics.sql', import.meta.url), 'utf8');
+  for (const column of ['platform_impressions', 'platform_reach', 'platform_link_clicks', 'platform_landing_page_views']) assert.match(migration, new RegExp(`add column if not exists ${column}`));
+  assert.match(migration, /not confirmed sales/i);
+});
+
 test('managers can read but cannot directly edit the audit log', async () => {
   const migration = await readFile(new URL('../supabase/migrations/0004_manager_audit_read.sql', import.meta.url), 'utf8');
   assert.match(migration, /array\['ADMIN', 'MANAGER'\]/);
