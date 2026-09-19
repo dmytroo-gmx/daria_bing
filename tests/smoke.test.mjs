@@ -21,6 +21,7 @@ test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /daria_audit_log/);
   assert.match(html, /id="snapshot-form"/);
   assert.match(js, /function saveSnapshot/);
+  assert.match(js, /function snapshotChanges/);
 });
 
 test('every navigation item has a separate panel', () => {
@@ -119,6 +120,7 @@ test('daily sales snapshots retain a source document rather than becoming unsupp
   assert.match(migration, /daria_audit_daily_sales_snapshots/);
   assert.match(js, /source_document_id: raw\.source_document_id/);
   assert.match(html, /Не додавай сюди загальні суми різних операторів/);
+  assert.match(js, /Різних операторів тут не складаємо/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {

@@ -115,6 +115,20 @@ function renderConcerts() {
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
 
+function snapshotChanges(snapshots) {
+  const groups = new Map();
+  snapshots.forEach(snapshot => {
+    const key = snapshot.operator_id || 'UNSPECIFIED';
+    groups.set(key, [...(groups.get(key) || []), snapshot]);
+  });
+  return [...groups.values()].map(group => {
+    const ordered = [...group].sort((left, right) => String(right.snapshot_date).localeCompare(String(left.snapshot_date)));
+    const [latest, previous] = ordered;
+    const sameCurrency = previous && latest.currency === previous.currency;
+    return { latest, previous, ticketDelta: previous ? Number(latest.tickets_sold_total) - Number(previous.tickets_sold_total) : null, revenueDelta: sameCurrency ? Number(latest.revenue_total) - Number(previous.revenue_total) : null };
+  });
+}
+
 const detailTabs = ['OVERVIEW', 'SALES', 'DAILY', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
 
 function renderConcertDetail() {
@@ -129,7 +143,7 @@ function renderConcertDetail() {
   let content = '';
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО PAID', fmt(sold))}${detailValue('ЗАЛИШОК', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОВНЕННЯ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ДО BREAK-EVEN', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue('GROSS REVENUE', money(metric.gross_revenue, concert.currency))}${detailValue('NET REVENUE', money(metric.net_revenue, concert.currency))}${detailValue('ВЖЕ СПЛАЧЕНО', money(metric.already_spent, concert.currency))}${detailValue('ОБОВʼЯЗКОВО ПОПЕРЕДУ', money(metric.mandatory_future, concert.currency))}${detailValue('ПОВОРОТНІ ЗАСТАВИ', money(metric.refundable_deposits, concert.currency))}${detailValue('ОПЕРАЦІЙНИЙ РЕЗУЛЬТАТ', money(metric.operational_result, concert.currency))}</div><div class="truth-note">${detail.server ? 'Метрики розраховані в Supabase. Валюти не конвертуються автоматично.' : 'Серверні метрики ще не завантажені; показано лише доступний локальний підсумок.'}</div>`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} кв. · ${money(order.gross_revenue, order.currency)} · ${esc(order.attribution_type)}</span></div>`).join('') || '<div class="empty">Записів ще немає.</div>'; }
-  if (state.detailTab === 'DAILY') content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОДАТИ ЩОДЕННИЙ ЗРІЗ</button><div class="truth-note">Це окремі дані операторів на конкретну дату, а не сума всіх рядків для автоматичного додавання.</div>${detail.snapshots.map(snapshot => `<div class="detail-line"><b>${esc(dateLabel(snapshot.snapshot_date))} · ${fmt(snapshot.tickets_sold_total)} кв. · ${money(snapshot.revenue_total, snapshot.currency)}</b><span>${esc(snapshot.operator_name || 'оператор не вказаний')} · ${esc(snapshot.source_name || 'джерело не прив’язано')}${snapshot.source_note ? ` · ${esc(snapshot.source_note)}` : ''}</span></div>`).join('') || '<div class="empty">Щоденних зрізів ще немає.</div>'}`;
+  if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОДАТИ ЩОДЕННИЙ ЗРІЗ</button><div class="truth-note">Зміна рахується лише між двома останніми зрізами одного оператора та тієї самої валюти. Різних операторів тут не складаємо.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не вказаний')} · станом на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} кв. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · зміна: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} кв.${change.revenueDelta == null ? ' · інша валюта — без зміни виручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · попереднього зрізу ще немає'} · ${esc(change.latest.source_name || 'джерело не прив’язано')}</span></div>`).join('') || '<div class="empty">Щоденних зрізів ще немає.</div>'}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не вказаний'} · ${snapshot.source_name || 'джерело не прив’язано'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
   if (state.detailTab === 'CHANNELS') content = detail.campaigns.map(campaign => `<div class="detail-line"><b>${esc(campaign.campaign_name)}</b><span>${esc(campaign.source_code)} · spend ${money(campaign.actual_spend, concert.currency)} · platform ${fmt(campaign.platform_reported_orders)}</span></div>`).join('') || '<div class="empty">Кампаній ще немає.</div>';
   if (state.detailTab === 'FINANCE') content = detail.expenses.map(expense => `<div class="detail-line"><b>${esc(expense.description || expense.category)}</b><span>${esc(expense.expense_type)} · ${esc(expense.payment_status)} · ${money(expense.amount, expense.currency)}</span></div>`).join('') || '<div class="empty">Витрат ще немає.</div>';
   if (state.detailTab === 'TRACKING') content = detail.links.map(link => `<div class="detail-line"><b>${esc(link.source_code)}</b><span>${esc(link.destination_url || link.statistical_url || 'URL не задано')}</span></div>`).join('') || '<div class="empty">Tracking links ще немає.</div>';
