@@ -15,10 +15,12 @@ test('the product is branded Legacy Brain', () => {
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
-  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'DAILY', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
   assert.match(js, /data-detail-tab/);
   assert.match(js, /daria_audit_log/);
+  assert.match(html, /id="snapshot-form"/);
+  assert.match(js, /function saveSnapshot/);
 });
 
 test('every navigation item has a separate panel', () => {
@@ -109,6 +111,14 @@ test('verified Meta CSV application keeps a source-to-campaign audit trail', asy
   assert.match(migration, /document_type = 'META_CSV'/);
   assert.match(migration, /application_mode = 'REPLACE_CAMPAIGN_METRICS'/);
   assert.match(migration, /jsonb_build_object/);
+});
+
+test('daily sales snapshots retain a source document rather than becoming unsupported totals', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0007_daily_snapshots_with_source.sql', import.meta.url), 'utf8');
+  assert.match(migration, /add column if not exists source_document_id/);
+  assert.match(migration, /daria_audit_daily_sales_snapshots/);
+  assert.match(js, /source_document_id: raw\.source_document_id/);
+  assert.match(html, /Не додавай сюди загальні суми різних операторів/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {
