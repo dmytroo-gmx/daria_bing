@@ -131,7 +131,7 @@ test('verified Meta CSV application keeps a source-to-campaign audit trail', asy
 
 test('Meta export rows are parsed before a campaign metric is applied', () => {
   assert.match(js, /function metaRowsFromCsv/);
-  assert.match(js, /Потраченная сумма/);
+  assert.match(js, /потраченная сумма/);
   assert.match(js, /meta-source-row/);
   assert.match(js, /Проверьте кампанию перед применением/);
 });
