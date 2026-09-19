@@ -10,7 +10,7 @@ const [html, js, css] = await Promise.all([
 
 test('the product is branded Legacy Brain', () => {
   assert.match(html, /<title>Legacy Brain/);
-  assert.match(html, />LEGACY BRAIN</);
+  assert.match(html, />Legacy Brain</);
   assert.doesNotMatch(html, /DARIA BING/i);
 });
 
@@ -161,7 +161,7 @@ test('reports label platform and confirmed attribution separately', () => {
 test('an authenticated user must have a verified manager role before editing', () => {
   assert.match(js, /daria_user_roles'\)\.select\('role'\)/);
   assert.match(js, /\['ADMIN', 'MANAGER'\]\.includes\(state\.role\)/);
-  assert.match(js, /роль не призначена/);
+  assert.match(js, /роль не назначена/);
 });
 
 test('server-side metrics and audit logging are present in the additive migration', async () => {

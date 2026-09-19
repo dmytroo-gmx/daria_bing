@@ -12,12 +12,27 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
+const labels = {
+  status: { DRAFT: 'ЧЕРНОВИК', PLANNED: 'ЗАПЛАНИРОВАН', ON_SALE: 'В ПРОДАЖЕ', ACTIVE: 'В РАБОТЕ', ON_HOLD: 'НА ПАУЗЕ', POSTPONED: 'ПЕРЕНЕСЁН', CANCELLED: 'ОТМЕНЁН', COMPLETED: 'ЗАВЕРШЁН' },
+  risk: { GRAY: 'НЕ ОЦЕНЁН', GREEN: 'НИЗКИЙ РИСК', YELLOW: 'ТРЕБУЕТ ВНИМАНИЯ', RED: 'ВЫСОКИЙ РИСК' },
+  taskStatus: { OPEN: 'ОТКРЫТА', IN_PROGRESS: 'В РАБОТЕ', DONE: 'ВЫПОЛНЕНА', CANCELLED: 'ОТМЕНЕНА' },
+  priority: { LOW: 'НИЗКИЙ', NORMAL: 'ОБЫЧНЫЙ', HIGH: 'ВЫСОКИЙ', CRITICAL: 'КРИТИЧЕСКИЙ' },
+  orderStatus: { PAID: 'ОПЛАЧЕН', PENDING: 'ОЖИДАЕТ ОПЛАТЫ', REFUNDED: 'ВОЗВРАТ', CANCELLED: 'ОТМЕНЁН' },
+  attribution: { UNKNOWN: 'ИСТОЧНИК НЕ УСТАНОВЛЕН', CONFIRMED: 'ПОДТВЕРЖДЁННЫЙ ИСТОЧНИК', PLATFORM_ATTRIBUTED: 'УКАЗАНО ПЛАТФОРМОЙ' },
+  campaignStatus: { TESTING: 'ПРОВЕРКА', WORKING: 'РАБОТАЕТ', WEAK: 'СЛАБАЯ', STOPPED: 'ОСТАНОВЛЕНА' },
+  attributionQuality: { UNKNOWN: 'НЕ ОЦЕНЕНО', HIGH: 'ВЫСОКАЯ', MEDIUM: 'СРЕДНЯЯ', LOW: 'НИЗКАЯ' },
+  expenseType: { ALREADY_PAID: 'УЖЕ ОПЛАЧЕНО', MANDATORY_FUTURE: 'ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', OPTIONAL_FUTURE: 'НЕОБЯЗАТЕЛЬНЫЙ РАСХОД', REFUNDABLE_DEPOSIT: 'ВОЗВРАТНЫЙ ЗАЛОГ' },
+  paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
+  linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
+};
 const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
 const money = (value, currency = 'PLN') => new Intl.NumberFormat('pl-PL', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value) || 0);
-const dateLabel = value => value ? new Intl.DateTimeFormat('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${value}T12:00:00`)) : 'дату не задано';
+const dateLabel = value => value ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${value}T12:00:00`)) : 'дата не указана';
+const label = (group, value) => labels[group]?.[value] || String(value ?? '—').replaceAll('_', ' ');
+const help = (text, explanation) => `${text} <span class="term-help" tabindex="0" data-tooltip="${esc(explanation)}">?</span>`;
 
 function setStatus(message, isError = false) {
   byId('sync-status').textContent = message;
@@ -25,9 +40,9 @@ function setStatus(message, isError = false) {
 }
 
 function accessStatus() {
-  if (!state.session) return { message: 'Режим перегляду · увійдіть для редагування', isError: false };
-  if (state.role) return { message: `Спільна база · ${state.session.user.email} · ${state.role}`, isError: false };
-  return { message: `Є вхід: ${state.session.user.email} · роль не призначена`, isError: true };
+  if (!state.session) return { message: 'Режим просмотра · войдите для редактирования', isError: false };
+  if (state.role) return { message: `Общая база · ${state.session.user.email} · ${state.role === 'ADMIN' ? 'АДМИНИСТРАТОР' : 'МЕНЕДЖЕР'}`, isError: false };
+  return { message: `Вход выполнен: ${state.session.user.email} · роль не назначена`, isError: true };
 }
 
 function showAccessStatus() {
@@ -57,16 +72,16 @@ function toggleLogin(force) {
 
 async function sendMagicLink() {
   const email = byId('editor-email').value.trim();
-  if (!email) { byId('login-note').textContent = 'Введіть робочий email.'; return; }
+  if (!email) { byId('login-note').textContent = 'Введите рабочую почту.'; return; }
   const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin + window.location.pathname } });
-  byId('login-note').textContent = error ? `Не вдалося надіслати посилання: ${error.message}` : 'Посилання надіслано. Відкрийте його в цьому браузері.';
+  byId('login-note').textContent = error ? `Не удалось отправить ссылку: ${error.message}` : 'Ссылка отправлена. Откройте её в этом браузере.';
 }
 
 function updateAccess(session) {
   state.session = session;
   state.role = null;
   const loggedIn = Boolean(session);
-  byId('login-toggle').textContent = loggedIn ? 'ВИЙТИ' : 'УВІЙТИ';
+  byId('login-toggle').textContent = loggedIn ? 'ВЫЙТИ' : 'ВОЙТИ';
   byId('login-toggle').onclick = loggedIn ? async () => db.auth.signOut() : () => toggleLogin();
   if (loggedIn) toggleLogin(false);
   showAccessStatus();
@@ -83,7 +98,7 @@ async function loadCurrentRole() {
 
 function requireEditor(message) {
   if (state.session && ['ADMIN', 'MANAGER'].includes(state.role)) return true;
-  if (state.session) { setStatus('Вхід є, але роль MANAGER ще не підтверджена', true); return false; }
+  if (state.session) { setStatus('Вход выполнен, но роль менеджера ещё не подтверждена', true); return false; }
   toggleLogin(true);
   setStatus(message, true);
   return false;
@@ -94,8 +109,8 @@ function riskClass(risk) { return `risk-${String(risk || 'GRAY').toLowerCase()}`
 function concertCard(concert, compact = false) {
   const total = state.totals.get(concert.id) || { tickets: 0, revenue: 0 };
   return `<article class="ops-concert ${state.selectedConcertId === concert.id ? 'selected' : ''}" data-concert-id="${esc(concert.id)}">
-    <div><small>${esc(concert.status)} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'майданчик не задано')} · ${fmt(total.tickets)} квитків · ${money(total.revenue, concert.currency || 'PLN')}</small></div>
-    <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(concert.risk_status || 'GRAY')}</span>${compact ? '' : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛІ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">РЕДАГУВАТИ</button>`}</div>
+    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} билетов · ${money(total.revenue, concert.currency || 'PLN')}</small></div>
+    <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(label('risk', concert.risk_status || 'GRAY'))}</span>${compact ? '' : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛИ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">ИЗМЕНИТЬ</button>`}</div>
   </article>`;
 }
 
@@ -108,10 +123,10 @@ function renderConcerts() {
     if (period === 'ALL' || !concert.event_date) return true;
     const date = new Date(`${concert.event_date}T12:00:00`); return date >= now && date <= end;
   });
-  byId('dashboard-concerts').innerHTML = dashboardConcerts.map(concert => concertCard(concert, true)).join('') || '<div class="empty">У вибраному періоді активних концертів немає.</div>';
+  byId('dashboard-concerts').innerHTML = dashboardConcerts.map(concert => concertCard(concert, true)).join('') || '<div class="empty">В выбранном периоде активных концертов нет.</div>';
   const filter = byId('concert-filter').value;
   const visible = filter === 'ALL' ? state.concerts : state.concerts.filter(concert => concert.status === filter);
-  byId('concerts-list').innerHTML = visible.map(concert => concertCard(concert)).join('') || '<div class="empty">За цим фільтром концертів немає.</div>';
+  byId('concerts-list').innerHTML = visible.map(concert => concertCard(concert)).join('') || '<div class="empty">По этому фильтру концертов нет.</div>';
 }
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
