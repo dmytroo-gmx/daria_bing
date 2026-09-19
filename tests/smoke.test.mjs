@@ -163,6 +163,9 @@ test('operators preserve contract capabilities and unknown fields', () => {
   for (const field of ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'customer_data_access', 'payout_timing', 'legacy_recommendation']) assert.match(html, new RegExp(`name="${field}"`));
   assert.match(js, /daria_ticketing_operators'\)\.select\('\*'\)/);
   assert.match(js, /Порожнє поле означає «не зафіксовано»/);
+  assert.match(html, /id="operator-comparison"/);
+  assert.match(js, /function renderOperators/);
+  assert.match(js, /НЕ ЗАФИКСИРОВАНО/);
 });
 
 test('reports label platform and confirmed attribution separately', () => {
