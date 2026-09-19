@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -43,6 +43,7 @@ function showView(view) {
   if (view === 'concerts') loadOperations();
   if (view === 'sales') loadSalesModule();
   if (view === 'channels') loadChannelsModule();
+  if (view === 'documents') loadDocumentsModule();
   if (view === 'operators') loadOperatorsModule();
   if (view === 'reports') loadReportsModule();
   if (view === 'finance') loadFinance();
@@ -364,6 +365,75 @@ async function saveOrder(event) {
   form.hidden = true;
   setStatus(id ? 'Замовлення оновлено у спільній базі' : 'Замовлення додано до спільної бази');
   await Promise.all([loadSalesModule(), loadOperations()]);
+}
+
+const documentBucket = 'legacy-brain-source-documents';
+const documentTypeLabels = { PDF_REPORT: 'PDF REPORT', META_CSV: 'META CSV', OPERATOR_CSV: 'OPERATOR CSV', OTHER_CSV: 'OTHER CSV' };
+
+function renderDocuments() {
+  const documents = state.documents;
+  byId('d-total').textContent = fmt(documents.length);
+  byId('d-pdf').textContent = fmt(documents.filter(document => document.document_type === 'PDF_REPORT').length);
+  byId('d-review').textContent = fmt(documents.filter(document => document.document_type !== 'PDF_REPORT' && ['NEW', 'REVIEWED'].includes(document.import_status)).length);
+  byId('d-applied').textContent = fmt(documents.filter(document => document.import_status === 'APPLIED').length);
+  byId('document-list').innerHTML = documents.map(document => {
+    const concert = state.concerts.find(item => item.id === document.concert_id);
+    return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.import_status)}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не прив’язано до концерту')} · ${esc(document.source_date || 'дата джерела не задана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без нотатки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('uk-UA') : ''}</span></div><button class="text-button" type="button" data-open-document="${esc(document.id)}">ВІДКРИТИ</button></article>`;
+  }).join('') || '<div class="empty">Документів ще немає.</div>';
+}
+
+async function loadDocumentsModule() {
+  if (!state.session) {
+    ['d-total', 'd-pdf', 'd-review', 'd-applied'].forEach(id => { byId(id).textContent = '—'; });
+    byId('document-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити документи.</div>';
+    byId('documents-note').textContent = 'Документи захищені політиками доступу; порожня відповідь не означає, що їх немає.';
+    state.documents = [];
+    return;
+  }
+  if (!state.concerts.length) await loadOperations();
+  const { data, error } = await db.from('daria_source_documents').select('*').order('source_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+  if (error) { byId('documents-note').classList.add('error'); byId('documents-note').textContent = `Документи не завантажено: ${error.message}`; return; }
+  state.documents = data || [];
+  renderDocuments();
+  byId('documents-note').classList.remove('error');
+  byId('documents-note').textContent = 'PDF — первинне джерело. CSV Meta та операторів зберігається для перевірки й не змінює дані автоматично.';
+}
+
+function openDocumentForm() {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб завантажити документ.')) return;
+  const form = byId('document-form');
+  form.reset(); form.hidden = false; byId('document-form-note').textContent = '';
+  const options = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
+  setSelectOptions('document-concert', options, true, 'НЕ ПРИВ’ЯЗАНО');
+}
+
+async function saveDocument(event) {
+  event.preventDefault();
+  if (!requireEditor('Увійдіть через робочу пошту, щоб завантажити документ.')) return;
+  const form = event.currentTarget, file = form.elements.file.files[0];
+  const allowed = ['application/pdf', 'text/csv', 'application/csv'];
+  if (!file || (!allowed.includes(file.type) && !/\.(pdf|csv)$/i.test(file.name))) { byId('document-form-note').textContent = 'Додайте PDF або CSV файл.'; return; }
+  if (file.size > 20971520) { byId('document-form-note').textContent = 'Максимальний розмір файлу — 20 MB.'; return; }
+  const raw = Object.fromEntries(new FormData(form));
+  const extension = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'csv';
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120);
+  const storagePath = `${state.session.user.id}/${Date.now()}-${safeName || `source.${extension}`}`;
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('document-form-note').textContent = 'Завантаження файлу…';
+  const upload = await db.storage.from(documentBucket).upload(storagePath, file, { contentType: file.type || (extension === 'pdf' ? 'application/pdf' : 'text/csv'), upsert: false });
+  if (upload.error) { submit.disabled = false; byId('document-form-note').textContent = `Файл не завантажено: ${upload.error.message}`; return; }
+  const payload = { concert_id: raw.concert_id || null, document_type: raw.document_type, source_name: file.name, storage_path: storagePath, mime_type: file.type || (extension === 'pdf' ? 'application/pdf' : 'text/csv'), source_date: raw.source_date || null, import_status: raw.import_status, notes: raw.notes.trim(), uploaded_by: state.session.user.id };
+  const result = await db.from('daria_source_documents').insert(payload);
+  submit.disabled = false;
+  if (result.error) { await db.storage.from(documentBucket).remove([storagePath]); byId('document-form-note').textContent = `Опис документа не збережено: ${result.error.message}`; return; }
+  form.hidden = true; setStatus('Джерело збережено у Legacy Brain'); await loadDocumentsModule();
+}
+
+async function openDocument(id) {
+  const document = state.documents.find(item => item.id === id);
+  if (!document) return;
+  const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
+  if (error) { setStatus(`Документ не відкрито: ${error.message}`, true); return; }
+  window.open(data.signedUrl, '_blank', 'noopener');
 }
 
 function setSelectOptions(id, options, includeEmpty = false, emptyLabel = 'НЕ ВКАЗАНО') {
@@ -791,6 +861,13 @@ function bindEvents() {
     const button = event.target.closest('[data-edit-link]');
     if (button) openTrackingForm(state.trackingLinks.find(link => link.id === button.dataset.editLink));
   });
+  byId('add-document').addEventListener('click', async () => { await loadOperations(); openDocumentForm(); });
+  byId('cancel-document').addEventListener('click', () => { byId('document-form').hidden = true; });
+  byId('document-form').addEventListener('submit', saveDocument);
+  byId('document-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-open-document]');
+    if (button) openDocument(button.dataset.openDocument);
+  });
   byId('add-operator').addEventListener('click', () => openOperatorForm());
   byId('cancel-operator').addEventListener('click', () => { byId('operator-form').hidden = true; });
   byId('operator-form').addEventListener('submit', saveOperator);
@@ -823,6 +900,7 @@ async function init() {
     loadOperations();
     if (document.querySelector('[data-panel="sales"]').classList.contains('active')) loadSalesModule();
     if (document.querySelector('[data-panel="channels"]').classList.contains('active')) loadChannelsModule();
+    if (document.querySelector('[data-panel="documents"]').classList.contains('active')) loadDocumentsModule();
     if (document.querySelector('[data-panel="operators"]').classList.contains('active')) loadOperatorsModule();
     if (document.querySelector('[data-panel="reports"]').classList.contains('active')) loadReportsModule();
     if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance();

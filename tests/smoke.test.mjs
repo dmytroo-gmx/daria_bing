@@ -22,7 +22,7 @@ test('concert workspace uses tabbed server-backed detail', () => {
 });
 
 test('every navigation item has a separate panel', () => {
-  for (const view of ['dashboard', 'concerts', 'sales', 'channels', 'operators', 'finance', 'reports', 'booking']) {
+  for (const view of ['dashboard', 'concerts', 'sales', 'channels', 'documents', 'operators', 'finance', 'reports', 'booking']) {
     assert.match(html, new RegExp(`data-view="${view}"`));
     assert.match(html, new RegExp(`data-panel="${view}"`));
   }
@@ -80,6 +80,18 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /Platform orders не додаються до confirmed sales автоматично/);
   assert.match(js, /план \$\{money\(planned, currency\)\}/);
   assert.match(js, /platform CPA/);
+});
+
+test('documents keep PDF evidence and CSV imports separate from operational facts', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0005_source_documents_pdf_first.sql', import.meta.url), 'utf8');
+  assert.match(html, /id="document-form"/);
+  assert.match(html, /PDF — первинний доказ/);
+  assert.match(js, /const documentBucket = 'legacy-brain-source-documents'/);
+  assert.match(js, /createSignedUrl/);
+  assert.match(js, /не змінює дані автоматично/);
+  assert.match(migration, /create table if not exists public\.daria_source_documents/);
+  assert.match(migration, /'application\/pdf'/);
+  assert.match(migration, /file_size_limit/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {
