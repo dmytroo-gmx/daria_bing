@@ -15,9 +15,10 @@ test('the product is branded Legacy Brain', () => {
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
-  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES'\]/);
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
   assert.match(js, /data-detail-tab/);
+  assert.match(js, /daria_audit_log/);
 });
 
 test('every navigation item has a separate panel', () => {
@@ -112,6 +113,12 @@ test('server-side metrics and audit logging are present in the additive migratio
   assert.match(migration, /REFUNDABLE_DEPOSIT/);
   assert.match(migration, /create or replace function public\.daria_write_audit_log/);
   assert.match(migration, /daria_audit_campaigns/);
+});
+
+test('managers can read but cannot directly edit the audit log', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0004_manager_audit_read.sql', import.meta.url), 'utf8');
+  assert.match(migration, /array\['ADMIN', 'MANAGER'\]/);
+  assert.doesNotMatch(migration, /for (insert|update|delete|all)/i);
 });
 
 test('legacy booking remains available and the responsive stylesheet loads', () => {

@@ -114,7 +114,7 @@ function renderConcerts() {
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
 
-const detailTabs = ['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES'];
+const detailTabs = ['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
 
 function renderConcertDetail() {
   const concert = state.concerts.find(item => item.id === state.selectedConcertId);
@@ -132,6 +132,7 @@ function renderConcertDetail() {
   if (state.detailTab === 'FINANCE') content = detail.expenses.map(expense => `<div class="detail-line"><b>${esc(expense.description || expense.category)}</b><span>${esc(expense.expense_type)} · ${esc(expense.payment_status)} · ${money(expense.amount, expense.currency)}</span></div>`).join('') || '<div class="empty">Витрат ще немає.</div>';
   if (state.detailTab === 'TRACKING') content = detail.links.map(link => `<div class="detail-line"><b>${esc(link.source_code)}</b><span>${esc(link.destination_url || link.statistical_url || 'URL не задано')}</span></div>`).join('') || '<div class="empty">Tracking links ще немає.</div>';
   if (state.detailTab === 'NOTES') content = `<div class="detail-notes">${esc(concert.notes || 'Нотаток немає.')}</div>`;
+  if (state.detailTab === 'HISTORY') content = detail.auditError ? '<div class="empty">Журнал змін недоступний для цієї ролі. Застосуйте міграцію 0004_manager_audit_read.sql.</div>' : detail.audit.map(entry => `<div class="detail-line"><b>${esc(entry.entity_type)} · ${esc(entry.action)}</b><span>${entry.created_at ? new Date(entry.created_at).toLocaleString('uk-UA') : 'час не зафіксовано'}</span></div>`).join('') || '<div class="empty">Змін цього концерту ще не зафіксовано.</div>';
   byId('concert-detail').innerHTML = `<p class="eyebrow">КАРТКА КОНЦЕРТУ · ${detail.server ? 'СПІЛЬНА БАЗА' : 'ОБМЕЖЕНИЙ ПЕРЕГЛЯД'}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'майданчик не задано')}</small><div class="detail-tabs">${tabs}</div><div class="detail-content">${content}</div><label class="quick-status">ШВИДКА ЗМІНА СТАТУСУ<select id="quick-status">${statuses.map(status => `<option value="${status}" ${status === concert.status ? 'selected' : ''}>${status.replace('_', ' ')}</option>`).join('')}</select></label><div class="detail-actions"><button class="button" type="button" id="edit-selected">РЕДАГУВАТИ</button></div>`;
   document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
   byId('quick-status').addEventListener('change', event => updateConcertStatus(concert.id, event.target.value));
@@ -149,7 +150,9 @@ async function selectConcert(id) {
     db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id)
   ]);
   const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
-  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [] };
+  const relatedIds = [id, ...(ordersResult.data || []).map(item => item.id), ...(expensesResult.data || []).map(item => item.id), ...(campaignsResult.data || []).map(item => item.id), ...(linksResult.data || []).map(item => item.id)];
+  const auditResult = await db.from('daria_audit_log').select('action,entity_type,entity_id,created_at').in('entity_id', relatedIds).order('created_at', { ascending: false }).limit(30);
+  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [], audit: auditResult.data || [], auditError: auditResult.error };
   renderConcertDetail();
   renderConcerts();
 }
