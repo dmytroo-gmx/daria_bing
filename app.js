@@ -262,7 +262,7 @@ async function updateConcertStatus(id, nextStatus) {
 
 async function loadOperations() {
   if (!state.session) {
-    ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk'].forEach(id => { byId(id).textContent = '—'; });
+    ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk', 'm-stale'].forEach(id => { byId(id).textContent = '—'; });
     byId('dashboard-concerts').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб побачити операційні дані.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр концертів.</div>';
     byId('dashboard-note').classList.remove('error');
@@ -271,17 +271,19 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
     db.from('daria_campaigns').select('actual_spend'),
-    db.from('daria_expenses').select('amount,currency,expense_type,payment_status')
+    db.from('daria_expenses').select('amount,currency,expense_type,payment_status'),
+    db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
   if (ordersResult.error) errors.push(`orders: ${ordersResult.error.message}`);
   if (campaignsResult.error) errors.push(`campaigns: ${campaignsResult.error.message}`);
   if (expensesResult.error) errors.push(`expenses: ${expensesResult.error.message}`);
+  if (snapshotsResult.error) errors.push(`daily snapshots: ${snapshotsResult.error.message}`);
   if (concertsResult.error) {
     byId('dashboard-concerts').innerHTML = '<div class="empty">Немає доступу до реєстру концертів. Увійдіть у робочий акаунт.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Не вдалося завантажити концерти.</div>';
@@ -306,9 +308,17 @@ async function loadOperations() {
   byId('m-mandatory').textContent = expensesResult.error ? '!' : currencyTotals(mandatory);
   byId('m-projected').textContent = expensesResult.error || ordersResult.error ? '!' : money(gross - paidValue - mandatoryValue);
   byId('m-risk').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['YELLOW', 'RED'].includes(concert.risk_status)).length;
+  const latestSnapshots = new Map();
+  (snapshotsResult.data || []).forEach(snapshot => {
+    const previous = latestSnapshots.get(snapshot.concert_id);
+    if (!previous || String(snapshot.snapshot_date) > String(previous)) latestSnapshots.set(snapshot.concert_id, snapshot.snapshot_date);
+  });
+  const freshCutoff = new Date(); freshCutoff.setHours(0, 0, 0, 0); freshCutoff.setDate(freshCutoff.getDate() - 2);
+  const staleSnapshots = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && (!latestSnapshots.get(concert.id) || new Date(`${latestSnapshots.get(concert.id)}T12:00:00`) < freshCutoff));
+  byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
-  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : 'Факт: PAID orders, внесені витрати та campaigns.actual_spend. Операційний результат не включає поворотні застави й не є фінансовою рекомендацією.';
+  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: PAID orders, внесені витрати та campaigns.actual_spend. «Без свіжого зрізу» означає відсутність нового підтвердженого звіту для ${fmt(staleSnapshots.length)} активних концертів, а не відсутність продажів.`;
   if (!concertsResult.error) renderConcerts();
 }
 
