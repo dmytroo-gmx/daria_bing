@@ -180,6 +180,8 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /function renderOperatorReport/);
   assert.match(html, /id="channel-report-list"/);
   assert.match(html, /id="operator-report-list"/);
+  assert.match(js, /function concertChannelPerformance/);
+  assert.match(js, /Подтверждённые показатели основаны только на оплаченных заказах/);
 });
 
 test('an authenticated user must have a verified manager role before editing', () => {
