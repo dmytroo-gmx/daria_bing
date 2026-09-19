@@ -47,7 +47,8 @@ test('concerts support create, edit, detail, filters and all schema statuses', (
 
 test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /ticket_count,gross_revenue,status/);
-  assert.match(js, /daria_campaigns'\)\.select\('actual_spend'\)/);
+  assert.match(js, /daria_campaigns'\)\.select\('concert_id,actual_spend'\)/);
+  assert.match(js, /function formatCurrencyMap/);
   assert.doesNotMatch(js, /quantity,gross_amount/);
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
   assert.match(html, /id="m-stale"/);

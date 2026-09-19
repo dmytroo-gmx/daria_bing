@@ -392,7 +392,7 @@ async function loadOperations() {
   const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
-    db.from('daria_campaigns').select('actual_spend'),
+    db.from('daria_campaigns').select('concert_id,actual_spend'),
     db.from('daria_expenses').select('amount,currency,expense_type,payment_status'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date')
   ]);
@@ -416,15 +416,22 @@ async function loadOperations() {
   });
   byId('m-active').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status)).length;
   byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(paidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  byId('m-revenue').textContent = ordersResult.error ? '!' : money(paidOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0));
-  byId('m-spend').textContent = campaignsResult.error ? '!' : money((campaignsResult.data || []).reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  byId('m-revenue').textContent = ordersResult.error ? '!' : currencyTotals(paidOrders, 'gross_revenue');
+  const campaignSpend = new Map();
+  (campaignsResult.data || []).forEach(campaign => {
+    const currency = state.concerts.find(concert => concert.id === campaign.concert_id)?.currency || 'PLN';
+    campaignSpend.set(currency, (campaignSpend.get(currency) || 0) + (Number(campaign.actual_spend) || 0));
+  });
+  byId('m-spend').textContent = campaignsResult.error ? '!' : formatCurrencyMap(campaignSpend);
   const mandatory = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
   const paid = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID');
-  const gross = paidOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
-  const mandatoryValue = mandatory.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
-  const paidValue = paid.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+  const operationalResult = amountMap(paidOrders, 'gross_revenue');
+  [paid, mandatory].forEach(items => items.forEach(item => {
+    const currency = item.currency || 'PLN';
+    operationalResult.set(currency, (operationalResult.get(currency) || 0) - (Number(item.amount) || 0));
+  }));
   byId('m-mandatory').textContent = expensesResult.error ? '!' : currencyTotals(mandatory);
-  byId('m-projected').textContent = expensesResult.error || ordersResult.error ? '!' : money(gross - paidValue - mandatoryValue);
+  byId('m-projected').textContent = expensesResult.error || ordersResult.error ? '!' : formatCurrencyMap(operationalResult);
   byId('m-risk').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['YELLOW', 'RED'].includes(concert.risk_status)).length;
   const latestSnapshots = new Map();
   (snapshotsResult.data || []).forEach(snapshot => {
@@ -1092,6 +1099,10 @@ function amountMap(items, field = 'amount') {
 
 function currencyTotals(items, field = 'amount') {
   const totals = amountMap(items, field);
+  return formatCurrencyMap(totals);
+}
+
+function formatCurrencyMap(totals) {
   return totals.size ? [...totals.entries()].map(([currency, amount]) => money(amount, currency)).join(' · ') : '0 zł';
 }
 
