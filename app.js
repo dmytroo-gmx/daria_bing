@@ -385,7 +385,10 @@ function renderChannels() {
   byId('campaign-list').innerHTML = state.campaigns.map(campaign => {
     const channel = state.channels.find(item => item.id === campaign.channel_id);
     const concert = state.concerts.find(item => item.id === campaign.concert_id);
-    return `<article class="ops-concert"><div><small>${esc(campaign.status)} · ${esc(campaign.attribution_quality)} · ${esc(channel?.name || 'канал не знайдено')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не знайдено')} · spend ${money(campaign.actual_spend)} · platform orders ${fmt(campaign.platform_reported_orders)}</small></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">РЕДАГУВАТИ</button></article>`;
+    const planned = Number(campaign.planned_budget || 0), actual = Number(campaign.actual_spend || 0), platformOrders = Number(campaign.platform_reported_orders || 0);
+    const delta = actual - planned, currency = concert?.currency || 'PLN';
+    const deltaLabel = delta === 0 ? 'за планом' : delta > 0 ? `+${money(delta, currency)} понад план` : `${money(Math.abs(delta), currency)} не використано`;
+    return `<article class="ops-concert"><div><small>${esc(campaign.status)} · ${esc(campaign.attribution_quality)} · ${esc(channel?.name || 'канал не знайдено')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не знайдено')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel} · platform orders ${fmt(platformOrders)}${platformOrders ? ` · platform CPA ${money(actual / platformOrders, currency)}` : ''}</small></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">РЕДАГУВАТИ</button></article>`;
   }).join('') || '<div class="empty">Кампаній ще немає.</div>';
   byId('tracking-link-list').innerHTML = state.trackingLinks.map(link => {
     const campaign = state.campaigns.find(item => item.id === link.campaign_id);

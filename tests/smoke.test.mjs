@@ -77,6 +77,8 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /daria_campaigns'\)\.select\('\*'\)/);
   assert.match(js, /daria_tracking_links'\)\.select\('\*'\)/);
   assert.match(js, /Platform orders не додаються до confirmed sales автоматично/);
+  assert.match(js, /план \$\{money\(planned, currency\)\}/);
+  assert.match(js, /platform CPA/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {
