@@ -15,13 +15,14 @@ test('the product is branded Legacy Brain', () => {
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
-  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'DAILY', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
   assert.match(js, /data-detail-tab/);
   assert.match(js, /daria_audit_log/);
   assert.match(html, /id="snapshot-form"/);
   assert.match(js, /function saveSnapshot/);
   assert.match(js, /function snapshotChanges/);
+  assert.match(js, /data-open-detail-document/);
 });
 
 test('every navigation item has a separate panel', () => {

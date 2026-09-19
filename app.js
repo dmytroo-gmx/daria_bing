@@ -129,7 +129,7 @@ function snapshotChanges(snapshots) {
   });
 }
 
-const detailTabs = ['OVERVIEW', 'SALES', 'DAILY', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
+const detailTabs = ['OVERVIEW', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
 
 function renderConcertDetail() {
   const concert = state.concerts.find(item => item.id === state.selectedConcertId);
@@ -144,6 +144,7 @@ function renderConcertDetail() {
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО PAID', fmt(sold))}${detailValue('ЗАЛИШОК', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОВНЕННЯ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ДО BREAK-EVEN', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue('GROSS REVENUE', money(metric.gross_revenue, concert.currency))}${detailValue('NET REVENUE', money(metric.net_revenue, concert.currency))}${detailValue('ВЖЕ СПЛАЧЕНО', money(metric.already_spent, concert.currency))}${detailValue('ОБОВʼЯЗКОВО ПОПЕРЕДУ', money(metric.mandatory_future, concert.currency))}${detailValue('ПОВОРОТНІ ЗАСТАВИ', money(metric.refundable_deposits, concert.currency))}${detailValue('ОПЕРАЦІЙНИЙ РЕЗУЛЬТАТ', money(metric.operational_result, concert.currency))}</div><div class="truth-note">${detail.server ? 'Метрики розраховані в Supabase. Валюти не конвертуються автоматично.' : 'Серверні метрики ще не завантажені; показано лише доступний локальний підсумок.'}</div>`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} кв. · ${money(order.gross_revenue, order.currency)} · ${esc(order.attribution_type)}</span></div>`).join('') || '<div class="empty">Записів ще немає.</div>'; }
   if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОДАТИ ЩОДЕННИЙ ЗРІЗ</button><div class="truth-note">Зміна рахується лише між двома останніми зрізами одного оператора та тієї самої валюти. Різних операторів тут не складаємо.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не вказаний')} · станом на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} кв. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · зміна: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} кв.${change.revenueDelta == null ? ' · інша валюта — без зміни виручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · попереднього зрізу ще немає'} · ${esc(change.latest.source_name || 'джерело не прив’язано')}</span></div>`).join('') || '<div class="empty">Щоденних зрізів ще немає.</div>'}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не вказаний'} · ${snapshot.source_name || 'джерело не прив’язано'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
+  if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата джерела не задана')} · ${esc(document.import_status)}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ВІДКРИТИ</button></span></div>`).join('') || '<div class="empty">До цього концерту ще не прив’язано PDF або CSV-джерел.</div>';
   if (state.detailTab === 'CHANNELS') content = detail.campaigns.map(campaign => `<div class="detail-line"><b>${esc(campaign.campaign_name)}</b><span>${esc(campaign.source_code)} · spend ${money(campaign.actual_spend, concert.currency)} · platform ${fmt(campaign.platform_reported_orders)}</span></div>`).join('') || '<div class="empty">Кампаній ще немає.</div>';
   if (state.detailTab === 'FINANCE') content = detail.expenses.map(expense => `<div class="detail-line"><b>${esc(expense.description || expense.category)}</b><span>${esc(expense.expense_type)} · ${esc(expense.payment_status)} · ${money(expense.amount, expense.currency)}</span></div>`).join('') || '<div class="empty">Витрат ще немає.</div>';
   if (state.detailTab === 'TRACKING') content = detail.links.map(link => `<div class="detail-line"><b>${esc(link.source_code)}</b><span>${esc(link.destination_url || link.statistical_url || 'URL не задано')}</span></div>`).join('') || '<div class="empty">Tracking links ще немає.</div>';
@@ -153,6 +154,7 @@ function renderConcertDetail() {
   document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
   const addSnapshot = document.querySelector('[data-add-snapshot]');
   if (addSnapshot) addSnapshot.addEventListener('click', () => openSnapshotForm(concert));
+  document.querySelectorAll('[data-open-detail-document]').forEach(button => button.addEventListener('click', () => openDocumentRecord(detail.documents.find(document => document.id === button.dataset.openDetailDocument))));
   byId('quick-status').addEventListener('change', event => updateConcertStatus(concert.id, event.target.value));
   byId('edit-selected').addEventListener('click', () => openConcertForm(concert));
 }
@@ -163,15 +165,18 @@ async function selectConcert(id) {
   state.selectedConcertId = id;
   state.detail = null; renderConcertDetail(); renderConcerts();
   const fallback = state.totals.get(id) || { tickets: 0, revenue: 0 };
-  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], expenses: [], campaigns: [], links: [] }; renderConcertDetail(); return; }
+  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], expenses: [], campaigns: [], links: [] }; renderConcertDetail(); return; }
   const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult] = await Promise.all([
-    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('id,source_name')
+    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*')
   ]);
   const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
-  const snapshots = (snapshotsResult.data || []).map(snapshot => ({ ...snapshot, operator_name: (operatorsResult.data || []).find(operator => operator.id === snapshot.operator_id)?.name, source_name: (documentsResult.data || []).find(document => document.id === snapshot.source_document_id)?.source_name }));
+  const allDocuments = documentsResult.data || [];
+  const snapshots = (snapshotsResult.data || []).map(snapshot => ({ ...snapshot, operator_name: (operatorsResult.data || []).find(operator => operator.id === snapshot.operator_id)?.name, source_name: allDocuments.find(document => document.id === snapshot.source_document_id)?.source_name }));
+  const sourceDocumentIds = new Set(snapshots.map(snapshot => snapshot.source_document_id).filter(Boolean));
+  const documents = allDocuments.filter(document => document.concert_id === id || sourceDocumentIds.has(document.id));
   const relatedIds = [id, ...(ordersResult.data || []).map(item => item.id), ...snapshots.map(item => item.id), ...(expensesResult.data || []).map(item => item.id), ...(campaignsResult.data || []).map(item => item.id), ...(linksResult.data || []).map(item => item.id)];
   const auditResult = await db.from('daria_audit_log').select('action,entity_type,entity_id,created_at').in('entity_id', relatedIds).order('created_at', { ascending: false }).limit(30);
-  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [], audit: auditResult.data || [], auditError: auditResult.error };
+  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [], audit: auditResult.data || [], auditError: auditResult.error };
   renderConcertDetail();
   renderConcerts();
 }
@@ -489,7 +494,10 @@ async function saveDocument(event) {
 }
 
 async function openDocument(id) {
-  const document = state.documents.find(item => item.id === id);
+  return openDocumentRecord(state.documents.find(item => item.id === id));
+}
+
+async function openDocumentRecord(document) {
   if (!document) return;
   const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
   if (error) { setStatus(`Документ не відкрито: ${error.message}`, true); return; }
