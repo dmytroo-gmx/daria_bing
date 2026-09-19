@@ -100,6 +100,8 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /platform CPA/);
   assert.match(js, /Meta CSV ще не застосовувався/);
   assert.match(js, /db\.from\('daria_csv_imports'\)/);
+  assert.match(js, /function generateCampaignSourceCode/);
+  assert.match(js, /Такой код источника уже есть/);
 });
 
 test('documents keep PDF evidence and CSV imports separate from operational facts', async () => {

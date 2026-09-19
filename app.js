@@ -847,10 +847,24 @@ function openCampaignForm(campaign = null) {
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function sourceToken(value, fallback) {
+  const translit = { А:'A',Б:'B',В:'V',Г:'G',Д:'D',Е:'E',Ё:'E',Ж:'ZH',З:'Z',И:'I',Й:'Y',К:'K',Л:'L',М:'M',Н:'N',О:'O',П:'P',Р:'R',С:'S',Т:'T',У:'U',Ф:'F',Х:'H',Ц:'TS',Ч:'CH',Ш:'SH',Щ:'SCH',Ы:'Y',Э:'E',Ю:'YU',Я:'YA',І:'I',Ї:'YI',Є:'YE' };
+  return String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split('').map(char => translit[char] || char).join('').replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || fallback;
+}
+function generateCampaignSourceCode() {
+  const form = byId('campaign-form'), concert = state.concerts.find(item => item.id === form.elements.concert_id.value), channel = state.channels.find(item => item.id === form.elements.channel_id.value);
+  if (!concert || !channel || !form.elements.campaign_name.value.trim()) return;
+  const year = String(concert.event_date || '').slice(2, 4) || String(new Date().getFullYear()).slice(2);
+  form.elements.source_code.value = `${sourceToken(concert.city, 'CITY').slice(0, 3)}${year}_${sourceToken(channel.code, 'CHANNEL')}_${sourceToken(form.elements.campaign_name.value, 'CAMPAIGN')}`;
+}
+
 async function saveCampaign(event) {
   event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти кампанію.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
-  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: raw.source_code.trim(), planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const code = raw.source_code.trim().toUpperCase();
+  if (!/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(code)) { byId('campaign-form-note').textContent = 'Код источника должен состоять из латинских букв, цифр и подчёркиваний.'; return; }
+  if (state.campaigns.some(item => item.source_code === code && item.id !== raw.id)) { byId('campaign-form-note').textContent = 'Такой код источника уже есть у другой кампании.'; return; }
+  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: code, planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-form-note').textContent = 'Збереження…';
   const result = id ? await db.from('daria_campaigns').update(payload).eq('id', id) : await db.from('daria_campaigns').insert(payload);
   submit.disabled = false;
@@ -1167,6 +1181,7 @@ function bindEvents() {
   });
   byId('add-campaign').addEventListener('click', () => openCampaignForm());
   byId('cancel-campaign').addEventListener('click', () => { byId('campaign-form').hidden = true; });
+  ['concert_id', 'channel_id', 'campaign_name'].forEach(name => byId('campaign-form').elements[name].addEventListener('change', () => { if (!byId('campaign-form').elements.source_code.value.trim()) generateCampaignSourceCode(); }));
   byId('campaign-form').addEventListener('submit', saveCampaign);
   byId('campaign-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-campaign]');
