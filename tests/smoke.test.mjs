@@ -95,6 +95,17 @@ test('an authenticated user must have a verified manager role before editing', (
   assert.match(js, /роль не призначена/);
 });
 
+test('server-side metrics and audit logging are present in the additive migration', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0003_concert_metrics_and_audit.sql', import.meta.url), 'utf8');
+  assert.match(migration, /create or replace function public\.daria_concert_metrics/);
+  assert.match(migration, /create or replace function public\.daria_channel_metrics/);
+  assert.match(migration, /order_row\.status = 'PAID'/);
+  assert.match(migration, /order_row\.attribution_type = 'CONFIRMED'/);
+  assert.match(migration, /REFUNDABLE_DEPOSIT/);
+  assert.match(migration, /create or replace function public\.daria_write_audit_log/);
+  assert.match(migration, /daria_audit_campaigns/);
+});
+
 test('legacy booking remains available and the responsive stylesheet loads', () => {
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);
