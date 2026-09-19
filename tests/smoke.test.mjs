@@ -66,6 +66,13 @@ test('sales keeps payment state and attribution evidence distinct', () => {
   assert.match(js, /daria_orders'\)\.select\('\*'\)/);
 });
 
+test('operator CSV import previews rows and excludes existing orders before insertion', () => {
+  assert.match(html, /id="order-import-form"/);
+  assert.match(js, /function prepareOrderImport/);
+  assert.match(js, /external_order_id', ids/);
+  assert.match(js, /Пропущено дублей/);
+});
+
 test('unauthenticated empty RLS results are not presented as zero', () => {
   assert.match(js, /Порожня відповідь без авторизації не трактується як нуль/);
   assert.match(js, /if \(!state\.session\)/);

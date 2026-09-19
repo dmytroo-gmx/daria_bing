@@ -619,6 +619,54 @@ function parseCsv(text, delimiter) {
   return rows.filter(row => row.some(cell => cell));
 }
 
+let orderImport = null;
+const normaliseHeader = value => String(value || '').trim().toLowerCase().replace(/[ _.-]+/g, '');
+const importFieldHints = { external_order_id: ['orderid', 'order', 'numerzamowienia', 'idzamowienia'], ticket_count: ['tickets', 'ticketcount', 'bilety', 'iloscbiletow'], gross_revenue: ['revenue', 'gross', 'amount', 'kwota', 'przychod'], order_date: ['date', 'orderdate', 'data', 'datazamowienia'], status: ['status', 'orderstatus', 'stan'] };
+function importColumnOptions(headers, selected = '') { return `<option value="">НЕ ВЫБРАНО</option>${headers.map((header, index) => `<option value="${index}" ${String(index) === String(selected) ? 'selected' : ''}>${esc(header)}</option>`).join('')}`; }
+function openOrderImport() {
+  if (!requireEditor('Войдите через рабочую почту, чтобы импортировать продажи.')) return;
+  const form = byId('order-import-form'); form.reset(); form.hidden = false; orderImport = null;
+  setSelectOptions('import-concert', state.concerts.map(item => `<option value="${esc(item.id)}">${esc(item.event_name)} · ${esc(item.city)}</option>`).join(''));
+  setSelectOptions('import-operator', state.operators.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join(''));
+  form.querySelectorAll('.import-column').forEach(select => { select.innerHTML = '<option value="">СНАЧАЛА ВЫБЕРИТЕ ФАЙЛ</option>'; });
+  byId('order-import-preview').textContent = 'Выберите файл. До подтверждения ни один заказ не будет добавлен.'; byId('confirm-order-import').disabled = true;
+}
+function numberFromImport(value) { return Number(String(value ?? '').replace(/\s/g, '').replace(',', '.').replace(/[^0-9.-]/g, '')); }
+function prepareOrderImport() {
+  const form = byId('order-import-form'); if (!orderImport) return;
+  const fields = Object.fromEntries(new FormData(form)); const required = ['external_order_id', 'ticket_count', 'gross_revenue'];
+  if (required.some(field => fields[field] === '')) { byId('order-import-preview').textContent = 'Выберите номер заказа, количество билетов и выручку.'; byId('confirm-order-import').disabled = true; return; }
+  const rows = orderImport.rows.slice(1).map((row, index) => ({ row, index: index + 2 })).filter(item => item.row.some(Boolean));
+  const invalid = rows.filter(item => !item.row[fields.external_order_id] || !(numberFromImport(item.row[fields.ticket_count]) > 0) || !(numberFromImport(item.row[fields.gross_revenue]) >= 0));
+  const valid = rows.length - invalid.length;
+  byId('order-import-preview').innerHTML = `<p><b>Проверка файла:</b> ${fmt(rows.length)} строк. Готово к проверке: ${fmt(valid)}. Ошибок формата: ${fmt(invalid.length)}.</p><p>Перед записью система отдельно проверит дубли у выбранного оператора. Строки с ошибками не будут импортированы.</p>`;
+  byId('confirm-order-import').disabled = valid === 0;
+}
+async function readOrderImportFile(event) {
+  const file = event.target.files[0]; if (!file) return;
+  if (!/\.csv$/i.test(file.name)) { byId('order-import-preview').textContent = 'Нужна табличная выгрузка в формате CSV.'; return; }
+  const rows = parseCsv(await file.text(), csvDelimiter(await file.text()));
+  if (rows.length < 2) { byId('order-import-preview').textContent = 'В файле нет строк для импорта.'; return; }
+  orderImport = { rows, headers: rows[0] };
+  byId('order-import-form').querySelectorAll('.import-column').forEach(select => {
+    const hints = importFieldHints[select.name] || [], found = rows[0].findIndex(header => hints.includes(normaliseHeader(header)));
+    select.innerHTML = importColumnOptions(rows[0], found >= 0 ? found : '');
+  }); prepareOrderImport();
+}
+async function saveOrderImport(event) {
+  event.preventDefault(); if (!requireEditor('Войдите через рабочую почту, чтобы подтвердить импорт.')) return; if (!orderImport) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)); prepareOrderImport(); if (byId('confirm-order-import').disabled) return;
+  const rows = orderImport.rows.slice(1).map(row => ({ external_order_id: String(row[raw.external_order_id] || '').trim(), ticket_count: numberFromImport(row[raw.ticket_count]), gross_revenue: numberFromImport(row[raw.gross_revenue]), order_date: raw.order_date === '' ? null : row[raw.order_date] || null, status: raw.status === '' ? 'PAID' : (String(row[raw.status] || 'PAID').trim().toUpperCase() === 'REFUNDED' ? 'REFUNDED' : 'PAID') })).filter(item => item.external_order_id && item.ticket_count > 0 && item.gross_revenue >= 0);
+  const ids = [...new Set(rows.map(item => item.external_order_id))]; const { data: existing, error } = await db.from('daria_orders').select('external_order_id').eq('operator_id', raw.operator_id).in('external_order_id', ids);
+  if (error) { byId('order-import-note').textContent = `Не удалось проверить дубли: ${error.message}`; return; }
+  const duplicates = new Set((existing || []).map(item => item.external_order_id)), seen = new Set(); const fresh = rows.filter(item => { if (duplicates.has(item.external_order_id) || seen.has(item.external_order_id)) return false; seen.add(item.external_order_id); return true; }).map(item => ({ ...item, concert_id: raw.concert_id, operator_id: raw.operator_id, currency: raw.currency, attribution_type: 'UNKNOWN', notes: 'Импорт из CSV после проверки' }));
+  const skipped = rows.length - fresh.length;
+  if (!fresh.length) { byId('order-import-note').textContent = `Новых заказов нет: ${fmt(skipped)} строк уже есть у оператора или повторяются в файле.`; return; }
+  const result = await db.from('daria_orders').insert(fresh);
+  if (result.error) { byId('order-import-note').textContent = `Импорт не выполнен: ${result.error.message}`; return; }
+  byId('order-import-note').textContent = `Добавлено ${fmt(fresh.length)} заказов. Пропущено повторов: ${fmt(skipped)}.`; form.reset(); orderImport = null; byId('confirm-order-import').disabled = true; await loadSalesModule(); await loadDocumentsModule();
+}
+
 async function previewCsvDocument(id) {
   const document = state.documents.find(item => item.id === id), preview = byId('csv-preview');
   if (!document) return;
@@ -1109,6 +1157,11 @@ function bindEvents() {
     if (button) openTrackingForm(state.trackingLinks.find(link => link.id === button.dataset.editLink));
   });
   byId('add-document').addEventListener('click', async () => { await loadOperations(); openDocumentForm(); });
+  byId('open-order-import').addEventListener('click', async () => { await Promise.all([loadOperations(), loadOperatorsModule()]); openOrderImport(); });
+  byId('cancel-order-import').addEventListener('click', () => { byId('order-import-form').hidden = true; });
+  byId('order-import-form').elements.file.addEventListener('change', readOrderImportFile);
+  byId('order-import-form').querySelectorAll('.import-column').forEach(select => select.addEventListener('change', prepareOrderImport));
+  byId('order-import-form').addEventListener('submit', saveOrderImport);
   byId('cancel-document').addEventListener('click', () => { byId('document-form').hidden = true; });
   byId('document-form').addEventListener('submit', saveDocument);
   byId('document-list').addEventListener('click', event => {
