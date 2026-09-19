@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -41,6 +41,7 @@ function showView(view) {
   window.history.replaceState(null, '', `#${view}`);
   showAccessStatus();
   if (view === 'concerts') loadOperations();
+  if (view === 'tasks') loadTasksModule();
   if (view === 'sales') loadSalesModule();
   if (view === 'channels') loadChannelsModule();
   if (view === 'documents') loadDocumentsModule();
@@ -143,7 +144,7 @@ function snapshotTimelines(snapshots) {
   }).join('');
 }
 
-const detailTabs = ['OVERVIEW', 'CHECKLIST', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
+const detailTabs = ['OVERVIEW', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
 
 function checklistItem(done, title, copy, action = '') {
   return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОДАТИ ДЖЕРЕЛО' : 'ДОДАТИ ЗРІЗ'}</button>` : ''}</span></div>`;
@@ -161,6 +162,7 @@ function renderConcertDetail() {
   let content = '';
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО PAID', fmt(sold))}${detailValue('ЗАЛИШОК', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОВНЕННЯ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ДО BREAK-EVEN', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue('GROSS REVENUE', money(metric.gross_revenue, concert.currency))}${detailValue('NET REVENUE', money(metric.net_revenue, concert.currency))}${detailValue('ВЖЕ СПЛАЧЕНО', money(metric.already_spent, concert.currency))}${detailValue('ОБОВʼЯЗКОВО ПОПЕРЕДУ', money(metric.mandatory_future, concert.currency))}${detailValue('ПОВОРОТНІ ЗАСТАВИ', money(metric.refundable_deposits, concert.currency))}${detailValue('ОПЕРАЦІЙНИЙ РЕЗУЛЬТАТ', money(metric.operational_result, concert.currency))}</div><div class="truth-note">${detail.server ? 'Метрики розраховані в Supabase. Валюти не конвертуються автоматично.' : 'Серверні метрики ще не завантажені; показано лише доступний локальний підсумок.'}</div>`;
   if (state.detailTab === 'CHECKLIST') { const sourceReady = detail.documents.length > 0, snapshotsReady = detail.snapshots.length > 0, sourcedSnapshots = detail.snapshots.filter(snapshot => snapshot.source_document_id).length; content = `<div class="truth-note">Це технічна готовність даних, не оцінка фінансового стану концерту.</div>${checklistItem(sourceReady, 'Джерело для концерту', sourceReady ? `${fmt(detail.documents.length)} PDF/CSV прив’язано` : 'Спершу потрібен PDF або CSV від оператора / Meta', sourceReady ? '' : 'source')}${checklistItem(snapshotsReady, 'Щоденний зріз продажів', snapshotsReady ? `${fmt(detail.snapshots.length)} зрізів внесено` : 'Після джерела внеси перший зріз по одному оператору', snapshotsReady || !sourceReady ? '' : 'snapshot')}${checklistItem(!snapshotsReady || sourcedSnapshots === detail.snapshots.length, 'Докази для зрізів', !snapshotsReady ? 'Зрізів ще немає' : `${fmt(sourcedSnapshots)} з ${fmt(detail.snapshots.length)} зрізів мають документ-джерело`)}`; }
+  if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОДАТИ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(task.priority)} · ${esc(task.task_status)} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'строк не задано'}${task.details ? ` · ${esc(task.details)}` : ''}</span></div>`).join('') || '<div class="empty">Для цього концерту задач ще немає.</div>'}`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} кв. · ${money(order.gross_revenue, order.currency)} · ${esc(order.attribution_type)}</span></div>`).join('') || '<div class="empty">Записів ще немає.</div>'; }
   if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОДАТИ ЩОДЕННИЙ ЗРІЗ</button><div class="truth-note">Зміна рахується лише між двома останніми зрізами одного оператора та тієї самої валюти. Різних операторів тут не складаємо.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не вказаний')} · станом на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} кв. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · зміна: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} кв.${change.revenueDelta == null ? ' · інша валюта — без зміни виручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · попереднього зрізу ще немає'} · ${esc(change.latest.source_name || 'джерело не прив’язано')}</span></div>`).join('') || '<div class="empty">Щоденних зрізів ще немає.</div>'}${snapshotTimelines(detail.snapshots)}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не вказаний'} · ${snapshot.source_name || 'джерело не прив’язано'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
   if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата джерела не задана')} · ${esc(document.import_status)}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ВІДКРИТИ</button></span></div>`).join('') || '<div class="empty">До цього концерту ще не прив’язано PDF або CSV-джерел.</div>';
@@ -177,6 +179,8 @@ function renderConcertDetail() {
     if (button.dataset.detailAction === 'source') { showView('documents'); await loadOperations(); openDocumentForm(concert); }
     if (button.dataset.detailAction === 'snapshot') openSnapshotForm(concert);
   }));
+  const addDetailTask = document.querySelector('[data-add-detail-task]');
+  if (addDetailTask) addDetailTask.addEventListener('click', () => openTaskForm(null, concert));
   document.querySelectorAll('[data-open-detail-document]').forEach(button => button.addEventListener('click', () => openDocumentRecord(detail.documents.find(document => document.id === button.dataset.openDetailDocument))));
   byId('quick-status').addEventListener('change', event => updateConcertStatus(concert.id, event.target.value));
   byId('edit-selected').addEventListener('click', () => openConcertForm(concert));
@@ -188,18 +192,18 @@ async function selectConcert(id) {
   state.selectedConcertId = id;
   state.detail = null; renderConcertDetail(); renderConcerts();
   const fallback = state.totals.get(id) || { tickets: 0, revenue: 0 };
-  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], expenses: [], campaigns: [], links: [] }; renderConcertDetail(); return; }
-  const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult] = await Promise.all([
-    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*')
+  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], tasks: [], expenses: [], campaigns: [], links: [] }; renderConcertDetail(); return; }
+  const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult, tasksResult] = await Promise.all([
+    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false })
   ]);
   const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
   const allDocuments = documentsResult.data || [];
   const snapshots = (snapshotsResult.data || []).map(snapshot => ({ ...snapshot, operator_name: (operatorsResult.data || []).find(operator => operator.id === snapshot.operator_id)?.name, source_name: allDocuments.find(document => document.id === snapshot.source_document_id)?.source_name }));
   const sourceDocumentIds = new Set(snapshots.map(snapshot => snapshot.source_document_id).filter(Boolean));
   const documents = allDocuments.filter(document => document.concert_id === id || sourceDocumentIds.has(document.id));
-  const relatedIds = [id, ...(ordersResult.data || []).map(item => item.id), ...snapshots.map(item => item.id), ...(expensesResult.data || []).map(item => item.id), ...(campaignsResult.data || []).map(item => item.id), ...(linksResult.data || []).map(item => item.id)];
+  const relatedIds = [id, ...(ordersResult.data || []).map(item => item.id), ...snapshots.map(item => item.id), ...(tasksResult.data || []).map(item => item.id), ...(expensesResult.data || []).map(item => item.id), ...(campaignsResult.data || []).map(item => item.id), ...(linksResult.data || []).map(item => item.id)];
   const auditResult = await db.from('daria_audit_log').select('action,entity_type,entity_id,created_at').in('entity_id', relatedIds).order('created_at', { ascending: false }).limit(30);
-  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [], audit: auditResult.data || [], auditError: auditResult.error };
+  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, tasks: tasksResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [], audit: auditResult.data || [], auditError: auditResult.error };
   renderConcertDetail();
   renderConcerts();
 }
@@ -277,6 +281,58 @@ async function saveSnapshot(event) {
   submit.disabled = false;
   if (error) { byId('snapshot-form-note').textContent = `Зріз не збережено: ${error.message}`; return; }
   form.hidden = true; setStatus('Щоденний зріз збережено з прив’язаним джерелом'); await selectConcert(raw.concert_id);
+}
+
+function taskIsOpen(task) { return ['OPEN', 'IN_PROGRESS'].includes(task.task_status); }
+
+function renderTasks() {
+  const filter = byId('task-status-filter').value;
+  const tasks = state.tasks.filter(task => filter === 'ALL' || (filter === 'OPEN' ? taskIsOpen(task) : task.task_status === filter));
+  const today = new Date().toISOString().slice(0, 10);
+  byId('task-list').innerHTML = tasks.map(task => {
+    const concert = state.concerts.find(item => item.id === task.concert_id);
+    const overdue = taskIsOpen(task) && task.due_date && task.due_date < today;
+    return `<article class="expense-row"><div><small>${esc(task.priority)} · ${esc(task.task_status)}${overdue ? ' · ПРОСТРОЧЕНО' : ''}</small><h3>${esc(task.title)}</h3><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'не прив’язано до концерту')} · ${task.due_date ? esc(dateLabel(task.due_date)) : 'строк не задано'}</small></div><div class="expense-meta"><span>${esc(task.details || 'без деталей')}</span><span>${task.completed_at ? `виконано ${esc(new Date(task.completed_at).toLocaleString('uk-UA'))}` : ''}</span></div><button class="text-button" type="button" data-edit-task="${esc(task.id)}">РЕДАГУВАТИ</button></article>`;
+  }).join('') || '<div class="empty">За цим фільтром задач немає.</div>';
+  const open = state.tasks.filter(taskIsOpen), critical = open.filter(task => task.priority === 'CRITICAL'), overdue = open.filter(task => task.due_date && task.due_date < today);
+  byId('t-open').textContent = fmt(open.length); byId('t-critical').textContent = fmt(critical.length); byId('t-overdue').textContent = fmt(overdue.length); byId('t-done').textContent = fmt(state.tasks.filter(task => task.task_status === 'DONE').length);
+}
+
+async function loadTasksModule() {
+  if (!state.session) {
+    ['t-open', 't-critical', 't-overdue', 't-done'].forEach(id => { byId(id).textContent = '—'; });
+    byId('task-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити задачі.</div>';
+    byId('tasks-note').textContent = 'Задачі приховані політиками доступу; порожня відповідь не трактується як відсутність роботи.';
+    state.tasks = []; return;
+  }
+  if (!state.concerts.length) await loadOperations();
+  const { data, error } = await db.from('daria_operational_tasks').select('*').order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+  if (error) { byId('tasks-note').classList.add('error'); byId('tasks-note').textContent = `Задачі не завантажено: ${error.message}`; return; }
+  state.tasks = data || []; renderTasks(); byId('tasks-note').classList.remove('error'); byId('tasks-note').textContent = 'Задачі фіксують операційну дію. Статус DONE не підтверджує фінансовий результат.';
+}
+
+function openTaskForm(task = null, concert = null) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати задачі.')) return;
+  const form = byId('task-form'); form.reset(); form.hidden = false; byId('task-form-note').textContent = '';
+  byId('task-form-mode').textContent = task ? 'РЕДАГУВАННЯ ЗАДАЧІ' : 'НОВА ЗАДАЧА'; byId('task-form-title').textContent = task ? task.title : 'Додати задачу'; form.elements.id.value = task?.id || '';
+  const options = state.concerts.map(item => `<option value="${esc(item.id)}">${esc(item.event_name)} · ${esc(item.city)}</option>`).join(''); setSelectOptions('task-concert', options, true, 'НЕ ПРИВ’ЯЗАНО');
+  const fields = ['concert_id', 'title', 'details', 'task_status', 'priority', 'due_date'];
+  if (task) fields.forEach(field => { form.elements[field].value = task[field] ?? ''; });
+  else if (concert) form.elements.concert_id.value = concert.id;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveTask(event) {
+  event.preventDefault();
+  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти задачу.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), existing = state.tasks.find(task => task.id === raw.id);
+  const payload = { concert_id: raw.concert_id || null, title: raw.title.trim(), details: raw.details.trim(), task_status: raw.task_status, priority: raw.priority, due_date: raw.due_date || null, completed_at: raw.task_status === 'DONE' ? existing?.completed_at || new Date().toISOString() : null, updated_at: new Date().toISOString() };
+  if (!raw.id) payload.created_by = state.session.user.id;
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('task-form-note').textContent = 'Збереження…';
+  const result = raw.id ? await db.from('daria_operational_tasks').update(payload).eq('id', raw.id) : await db.from('daria_operational_tasks').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('task-form-note').textContent = `Задачу не збережено: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(raw.id ? 'Задачу оновлено' : 'Задачу додано'); await loadTasksModule();
 }
 
 async function updateConcertStatus(id, nextStatus) {
@@ -988,6 +1044,14 @@ function bindEvents() {
   byId('concert-form').addEventListener('submit', saveConcert);
   byId('cancel-snapshot').addEventListener('click', () => { byId('snapshot-form').hidden = true; });
   byId('snapshot-form').addEventListener('submit', saveSnapshot);
+  byId('add-task').addEventListener('click', async () => { await loadOperations(); openTaskForm(); });
+  byId('cancel-task').addEventListener('click', () => { byId('task-form').hidden = true; });
+  byId('task-form').addEventListener('submit', saveTask);
+  byId('task-status-filter').addEventListener('change', renderTasks);
+  byId('task-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-task]');
+    if (button) openTaskForm(state.tasks.find(task => task.id === button.dataset.editTask));
+  });
   byId('concert-filter').addEventListener('change', renderConcerts);
   byId('concerts-list').addEventListener('click', event => {
     const button = event.target.closest('[data-action]');
@@ -1074,6 +1138,7 @@ async function init() {
     if (document.querySelector('[data-panel="sales"]').classList.contains('active')) loadSalesModule();
     if (document.querySelector('[data-panel="channels"]').classList.contains('active')) loadChannelsModule();
     if (document.querySelector('[data-panel="documents"]').classList.contains('active')) loadDocumentsModule();
+    if (document.querySelector('[data-panel="tasks"]').classList.contains('active')) loadTasksModule();
     if (document.querySelector('[data-panel="operators"]').classList.contains('active')) loadOperatorsModule();
     if (document.querySelector('[data-panel="reports"]').classList.contains('active')) loadReportsModule();
     if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance();

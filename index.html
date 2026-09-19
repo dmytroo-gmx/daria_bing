@@ -17,7 +17,7 @@
     </header>
     <section class="login" id="login-panel" aria-label="Вхід редактора"><input id="editor-email" type="email" autocomplete="email" placeholder="Робочий email"><button class="button" id="send-login" type="button">ОТРИМАТИ ПОСИЛАННЯ</button><span class="login-note" id="login-note">Посилання прийде на пошту.</span></section>
     <nav class="ops-nav" aria-label="Основна навігація">
-      <button class="active" type="button" data-view="dashboard">DASHBOARD</button><button type="button" data-view="concerts">CONCERTS</button><button type="button" data-view="sales">SALES</button><button type="button" data-view="channels">CHANNELS</button><button type="button" data-view="documents">DOCUMENTS</button><button type="button" data-view="operators">OPERATORS</button><button type="button" data-view="finance">FINANCE</button><button type="button" data-view="reports">REPORTS</button><button type="button" data-view="booking">BOOKING</button>
+      <button class="active" type="button" data-view="dashboard">DASHBOARD</button><button type="button" data-view="concerts">CONCERTS</button><button type="button" data-view="tasks">TASKS</button><button type="button" data-view="sales">SALES</button><button type="button" data-view="channels">CHANNELS</button><button type="button" data-view="documents">DOCUMENTS</button><button type="button" data-view="operators">OPERATORS</button><button type="button" data-view="finance">FINANCE</button><button type="button" data-view="reports">REPORTS</button><button type="button" data-view="booking">BOOKING</button>
     </nav>
 
     <section class="view active" id="view-dashboard" data-panel="dashboard">
@@ -36,6 +36,15 @@
       <div class="panel-title"><div><p class="eyebrow">КОНЦЕРТИ</p><h2>Активні події</h2></div><div class="quick-actions"><button class="button subtle" type="button" data-quick="expense">+ ВИТРАТА</button><button class="button subtle" type="button" data-quick="campaign">+ КАМПАНІЯ</button><button class="button" type="button" data-go="concerts">КЕРУВАТИ КОНЦЕРТАМИ</button></div></div>
       <div class="ops-concerts" id="dashboard-concerts"><div class="empty">Завантаження операційних даних…</div></div>
       <div class="truth-note" id="dashboard-note">Метрики завантажуються незалежно: збій одного джерела не маскується нулями.</div>
+    </section>
+
+    <section class="view" id="view-tasks" data-panel="tasks">
+      <div class="section-head"><div><p class="eyebrow">OPERATIONAL TASKS</p><h1>Що потребує дії</h1></div><button class="button" id="add-task" type="button">ДОДАТИ ЗАДАЧУ</button></div>
+      <div class="metrics"><article class="metric"><span>ВІДКРИТІ</span><strong id="t-open">—</strong><small>OPEN + IN PROGRESS</small></article><article class="metric"><span>КРИТИЧНІ</span><strong id="t-critical">—</strong><small>CRITICAL</small></article><article class="metric"><span>ПРОСТРОЧЕНІ</span><strong id="t-overdue">—</strong><small>відкриті · строк минув</small></article><article class="metric"><span>ВИКОНАНІ</span><strong id="t-done">—</strong><small>DONE</small></article></div>
+      <div class="filter-row finance-filter"><label>СТАТУС <select id="task-status-filter"><option value="OPEN">ВІДКРИТІ</option><option value="ALL">УСІ</option><option value="IN_PROGRESS">IN PROGRESS</option><option value="DONE">DONE</option><option value="CANCELLED">CANCELLED</option></select></label></div>
+      <div class="expense-list" id="task-list"><div class="empty">Увійдіть, щоб відкрити задачі.</div></div>
+      <div class="truth-note" id="tasks-note">Задача фіксує потрібну дію та її стан; вона не є фінансовою рекомендацією.</div>
+      <form class="editor" id="task-form" hidden><div class="editor-head"><div><p class="eyebrow" id="task-form-mode">НОВА ЗАДАЧА</p><h2 id="task-form-title">Додати задачу</h2></div><button class="close" id="cancel-task" type="button">×</button></div><input name="id" type="hidden"><label class="full">ЗАДАЧА<input required name="title" maxlength="240"></label><label>КОНЦЕРТ<select name="concert_id" id="task-concert"><option value="">НЕ ПРИВ’ЯЗАНО</option></select></label><label>ПРІОРИТЕТ<select name="priority"><option value="NORMAL">NORMAL</option><option value="LOW">LOW</option><option value="HIGH">HIGH</option><option value="CRITICAL">CRITICAL</option></select></label><label>СТАТУС<select name="task_status"><option value="OPEN">OPEN</option><option value="IN_PROGRESS">IN PROGRESS</option><option value="DONE">DONE</option><option value="CANCELLED">CANCELLED</option></select></label><label>СТРОК<input name="due_date" type="date"></label><label class="full">ДЕТАЛІ<textarea name="details" rows="3"></textarea></label><div class="full editor-actions"><button class="button" type="submit">ЗБЕРЕГТИ</button><span class="form-note" id="task-form-note"></span></div></form>
     </section>
 
     <section class="view" id="view-concerts" data-panel="concerts">

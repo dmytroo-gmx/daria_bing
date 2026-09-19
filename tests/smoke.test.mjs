@@ -15,7 +15,7 @@ test('the product is branded Legacy Brain', () => {
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
-  assert.match(js, /const detailTabs = \['OVERVIEW', 'CHECKLIST', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
   assert.match(js, /data-detail-tab/);
   assert.match(js, /daria_audit_log/);
@@ -26,10 +26,11 @@ test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /data-open-detail-document/);
   assert.match(js, /function checklistItem/);
   assert.match(js, /data-detail-action/);
+  assert.match(js, /data-add-detail-task/);
 });
 
 test('every navigation item has a separate panel', () => {
-  for (const view of ['dashboard', 'concerts', 'sales', 'channels', 'documents', 'operators', 'finance', 'reports', 'booking']) {
+  for (const view of ['dashboard', 'concerts', 'tasks', 'sales', 'channels', 'documents', 'operators', 'finance', 'reports', 'booking']) {
     assert.match(html, new RegExp(`data-view="${view}"`));
     assert.match(html, new RegExp(`data-panel="${view}"`));
   }
@@ -129,6 +130,16 @@ test('daily sales snapshots retain a source document rather than becoming unsupp
   assert.match(html, /Не додавай сюди загальні суми різних операторів/);
   assert.match(js, /Різних операторів тут не складаємо/);
   assert.match(css, /\.snapshot-bars/);
+});
+
+test('operational tasks are concert-linked, role-protected and audited', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0008_operational_tasks.sql', import.meta.url), 'utf8');
+  assert.match(html, /id="task-form"/);
+  assert.match(js, /async function loadTasksModule/);
+  assert.match(js, /daria_operational_tasks/);
+  assert.match(migration, /create table if not exists public\.daria_operational_tasks/);
+  assert.match(migration, /daria_audit_operational_tasks/);
+  assert.match(migration, /array\['ADMIN', 'MANAGER'\]/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {
