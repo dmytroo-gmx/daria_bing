@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -114,22 +114,43 @@ function renderConcerts() {
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
 
-function selectConcert(id) {
+const detailTabs = ['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES'];
+
+function renderConcertDetail() {
+  const concert = state.concerts.find(item => item.id === state.selectedConcertId);
+  if (!concert) return;
+  const detail = state.detail;
+  if (!detail) { byId('concert-detail').innerHTML = '<p class="eyebrow">КАРТКА КОНЦЕРТУ</p><h2>Завантаження даних…</h2>'; return; }
+  const metric = detail.metric;
+  const sold = Number(metric.paid_tickets || 0), capacity = Number(concert.capacity || 0), remaining = capacity ? Math.max(0, capacity - sold) : null;
+  const breakNeeded = concert.break_even_tickets == null ? null : Math.max(0, Number(concert.break_even_tickets) - sold);
+  const tabs = detailTabs.map(tab => `<button type="button" class="detail-tab ${state.detailTab === tab ? 'active' : ''}" data-detail-tab="${tab}">${tab}</button>`).join('');
+  let content = '';
+  if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО PAID', fmt(sold))}${detailValue('ЗАЛИШОК', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОВНЕННЯ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ДО BREAK-EVEN', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue('GROSS REVENUE', money(metric.gross_revenue, concert.currency))}${detailValue('NET REVENUE', money(metric.net_revenue, concert.currency))}${detailValue('ВЖЕ СПЛАЧЕНО', money(metric.already_spent, concert.currency))}${detailValue('ОБОВʼЯЗКОВО ПОПЕРЕДУ', money(metric.mandatory_future, concert.currency))}${detailValue('ПОВОРОТНІ ЗАСТАВИ', money(metric.refundable_deposits, concert.currency))}${detailValue('ОПЕРАЦІЙНИЙ РЕЗУЛЬТАТ', money(metric.operational_result, concert.currency))}</div><div class="truth-note">${detail.server ? 'Метрики розраховані в Supabase. Валюти не конвертуються автоматично.' : 'Серверні метрики ще не завантажені; показано лише доступний локальний підсумок.'}</div>`;
+  if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} кв. · ${money(order.gross_revenue, order.currency)} · ${esc(order.attribution_type)}</span></div>`).join('') || '<div class="empty">Записів ще немає.</div>'; }
+  if (state.detailTab === 'CHANNELS') content = detail.campaigns.map(campaign => `<div class="detail-line"><b>${esc(campaign.campaign_name)}</b><span>${esc(campaign.source_code)} · spend ${money(campaign.actual_spend, concert.currency)} · platform ${fmt(campaign.platform_reported_orders)}</span></div>`).join('') || '<div class="empty">Кампаній ще немає.</div>';
+  if (state.detailTab === 'FINANCE') content = detail.expenses.map(expense => `<div class="detail-line"><b>${esc(expense.description || expense.category)}</b><span>${esc(expense.expense_type)} · ${esc(expense.payment_status)} · ${money(expense.amount, expense.currency)}</span></div>`).join('') || '<div class="empty">Витрат ще немає.</div>';
+  if (state.detailTab === 'TRACKING') content = detail.links.map(link => `<div class="detail-line"><b>${esc(link.source_code)}</b><span>${esc(link.destination_url || link.statistical_url || 'URL не задано')}</span></div>`).join('') || '<div class="empty">Tracking links ще немає.</div>';
+  if (state.detailTab === 'NOTES') content = `<div class="detail-notes">${esc(concert.notes || 'Нотаток немає.')}</div>`;
+  byId('concert-detail').innerHTML = `<p class="eyebrow">КАРТКА КОНЦЕРТУ · ${detail.server ? 'СПІЛЬНА БАЗА' : 'ОБМЕЖЕНИЙ ПЕРЕГЛЯД'}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'майданчик не задано')}</small><div class="detail-tabs">${tabs}</div><div class="detail-content">${content}</div><label class="quick-status">ШВИДКА ЗМІНА СТАТУСУ<select id="quick-status">${statuses.map(status => `<option value="${status}" ${status === concert.status ? 'selected' : ''}>${status.replace('_', ' ')}</option>`).join('')}</select></label><div class="detail-actions"><button class="button" type="button" id="edit-selected">РЕДАГУВАТИ</button></div>`;
+  document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
+  byId('quick-status').addEventListener('change', event => updateConcertStatus(concert.id, event.target.value));
+  byId('edit-selected').addEventListener('click', () => openConcertForm(concert));
+}
+
+async function selectConcert(id) {
   const concert = state.concerts.find(item => item.id === id);
   if (!concert) return;
   state.selectedConcertId = id;
-  const total = state.totals.get(id) || { tickets: 0, revenue: 0 };
-  byId('concert-detail').innerHTML = `<p class="eyebrow">ДЕТАЛІ КОНЦЕРТУ</p><h2>${esc(concert.event_name)}</h2>
-    <div class="detail-grid">
-      ${detailValue('ПРОЄКТ', concert.project_name)}${detailValue('МІСТО', concert.city)}${detailValue('ДАТА', dateLabel(concert.event_date))}${detailValue('МАЙДАНЧИК', concert.venue)}
-      ${detailValue('МІСТКІСТЬ', concert.capacity)}${detailValue('ПРОДАНО PAID', fmt(total.tickets))}${detailValue('GROSS REVENUE', money(total.revenue, concert.currency || 'PLN'))}${detailValue('BREAK-EVEN', concert.break_even_tickets)}
-      ${detailValue('ПЛАН MARKETING', money(concert.planned_marketing_budget, concert.currency || 'PLN'))}${detailValue('СЕРЕДНЯ ЦІНА', money(concert.average_ticket_price, concert.currency || 'PLN'))}${detailValue('РИЗИК', concert.risk_status)}${detailValue('ОНОВЛЕНО', concert.updated_at ? new Date(concert.updated_at).toLocaleString('uk-UA') : '—')}
-    </div>
-    <div class="detail-notes">${esc(concert.notes || 'Нотаток немає.')}</div>
-    <label class="quick-status">ШВИДКА ЗМІНА СТАТУСУ<select id="quick-status">${statuses.map(status => `<option value="${status}" ${status === concert.status ? 'selected' : ''}>${status.replace('_', ' ')}</option>`).join('')}</select></label>
-    <div class="detail-actions"><button class="button" type="button" id="edit-selected">РЕДАГУВАТИ</button></div>`;
-  byId('quick-status').addEventListener('change', event => updateConcertStatus(concert.id, event.target.value));
-  byId('edit-selected').addEventListener('click', () => openConcertForm(concert));
+  state.detail = null; renderConcertDetail(); renderConcerts();
+  const fallback = state.totals.get(id) || { tickets: 0, revenue: 0 };
+  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], expenses: [], campaigns: [], links: [] }; renderConcertDetail(); return; }
+  const [metricsResult, ordersResult, expensesResult, campaignsResult, linksResult] = await Promise.all([
+    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id)
+  ]);
+  const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
+  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], links: linksResult.data || [] };
+  renderConcertDetail();
   renderConcerts();
 }
 

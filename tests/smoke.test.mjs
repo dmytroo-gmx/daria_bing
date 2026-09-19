@@ -14,6 +14,12 @@ test('the product is branded Legacy Brain', () => {
   assert.doesNotMatch(html, /DARIA BING/i);
 });
 
+test('concert workspace uses tabbed server-backed detail', () => {
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'SALES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES'\]/);
+  assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
+  assert.match(js, /data-detail-tab/);
+});
+
 test('every navigation item has a separate panel', () => {
   for (const view of ['dashboard', 'concerts', 'sales', 'channels', 'operators', 'finance', 'reports', 'booking']) {
     assert.match(html, new RegExp(`data-view="${view}"`));
