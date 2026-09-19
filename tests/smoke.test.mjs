@@ -70,7 +70,7 @@ test('operator CSV import previews rows and excludes existing orders before inse
   assert.match(html, /id="order-import-form"/);
   assert.match(js, /function prepareOrderImport/);
   assert.match(js, /external_order_id', ids/);
-  assert.match(js, /Пропущено дублей/);
+  assert.match(js, /Пропущено повторов/);
 });
 
 test('unauthenticated empty RLS results are not presented as zero', () => {
