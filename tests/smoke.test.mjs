@@ -175,6 +175,11 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /ОКУПАЕМОСТЬ ПО ПЛАТФОРМЕ/);
   assert.match(js, /async function loadReportsModule/);
   assert.match(js, /Platform і confirmed навмисно не об’єднуються/);
+  assert.match(js, /daria_channel_metrics/);
+  assert.match(js, /function renderChannelReport/);
+  assert.match(js, /function renderOperatorReport/);
+  assert.match(html, /id="channel-report-list"/);
+  assert.match(html, /id="operator-report-list"/);
 });
 
 test('an authenticated user must have a verified manager role before editing', () => {
