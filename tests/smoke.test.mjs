@@ -129,6 +129,13 @@ test('verified Meta CSV application keeps a source-to-campaign audit trail', asy
   assert.match(migration, /jsonb_build_object/);
 });
 
+test('Meta export rows are parsed before a campaign metric is applied', () => {
+  assert.match(js, /function metaRowsFromCsv/);
+  assert.match(js, /Потраченная сумма/);
+  assert.match(js, /meta-source-row/);
+  assert.match(js, /Проверьте кампанию перед применением/);
+});
+
 test('daily sales snapshots retain a source document rather than becoming unsupported totals', async () => {
   const migration = await readFile(new URL('../supabase/migrations/0007_daily_snapshots_with_source.sql', import.meta.url), 'utf8');
   assert.match(migration, /add column if not exists source_document_id/);

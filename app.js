@@ -527,6 +527,24 @@ async function saveOrder(event) {
 
 const documentBucket = 'legacy-brain-source-documents';
 const documentTypeLabels = { PDF_REPORT: 'ОТЧЁТ ДОКУМЕНТОМ', META_CSV: 'ВЫГРУЗКА РЕКЛАМЫ', OPERATOR_CSV: 'ВЫГРУЗКА ОПЕРАТОРА', OTHER_CSV: 'ДРУГАЯ ВЫГРУЗКА' };
+let metaSourceRows = [];
+const importNumber = value => Number(String(value ?? '').replace(/\s/g, '').replace(',', '.').replace(/[^0-9.-]/g, '')) || 0;
+function metaRowsFromCsv(text) {
+  const rows = parseCsv(text, csvDelimiter(text)); if (rows.length < 2) return [];
+  const headers = rows[0], column = phrase => headers.findIndex(header => header.toLowerCase().includes(phrase));
+  const campaign = column('название кампании'), spend = column('потраченная сумма'), purchases = column('покупки'), roas = headers.findIndex(header => header.toLowerCase().includes('результаты') && header.toLowerCase().includes('roas'));
+  return rows.slice(1).map(row => ({ name: String(row[campaign] || '').trim(), spend: importNumber(row[spend]), purchases: importNumber(row[purchases]), roas: importNumber(row[roas]) })).filter(row => row.name);
+}
+async function metaRowsForDocument(document) {
+  const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300); if (error) throw error;
+  const response = await fetch(data.signedUrl, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return metaRowsFromCsv(await response.text());
+}
+function applyMetaSourceRow() {
+  const form = byId('meta-apply-form'), row = metaSourceRows[Number(form.elements.meta_source_row.value)]; if (!row) return;
+  form.elements.actual_spend.value = row.spend || 0; form.elements.platform_orders.value = row.purchases || 0; form.elements.platform_value.value = row.roas ? (row.spend * row.roas).toFixed(2) : '';
+  const campaign = state.campaigns.find(item => item.campaign_name.trim().toLowerCase() === row.name.toLowerCase()); if (campaign) form.elements.campaign_id.value = campaign.id;
+}
 
 function renderDocuments() {
   const documents = state.documents;
@@ -696,6 +714,11 @@ async function openMetaApplyForm(id) {
     return `<option value="${esc(campaign.id)}">${esc(concert?.event_name || 'концерт')} · ${esc(campaign.campaign_name)} · ${esc(campaign.source_code)}</option>`;
   }).join('');
   setSelectOptions('meta-apply-campaign', options);
+  try {
+    metaSourceRows = await metaRowsForDocument(document);
+    setSelectOptions('meta-source-row', metaSourceRows.map((row, index) => `<option value="${index}">${esc(row.name)} · расход ${money(row.spend)} · покупки ${fmt(row.purchases)}</option>`).join(''));
+    applyMetaSourceRow(); byId('meta-apply-note').textContent = `Распознано строк: ${fmt(metaSourceRows.length)}. Проверьте кампанию перед применением.`;
+  } catch (error) { metaSourceRows = []; setSelectOptions('meta-source-row', '<option value="">Не удалось прочитать выгрузку</option>'); byId('meta-apply-note').textContent = `Выгрузка не прочитана: ${error.message}`; }
 }
 
 async function applyMetaCsv(event) {
@@ -1173,6 +1196,7 @@ function bindEvents() {
     if (apply) openMetaApplyForm(apply.dataset.applyMeta);
   });
   byId('cancel-meta-apply').addEventListener('click', () => { byId('meta-apply-form').hidden = true; });
+  byId('meta-source-row').addEventListener('change', applyMetaSourceRow);
   byId('meta-apply-form').addEventListener('submit', applyMetaCsv);
   byId('add-operator').addEventListener('click', () => openOperatorForm());
   byId('cancel-operator').addEventListener('click', () => { byId('operator-form').hidden = true; });
