@@ -379,7 +379,8 @@ function renderDocuments() {
   byId('document-list').innerHTML = documents.map(document => {
     const concert = state.concerts.find(item => item.id === document.concert_id);
     const preview = document.document_type === 'PDF_REPORT' ? '' : `<button class="text-button" type="button" data-preview-csv="${esc(document.id)}">ПЕРЕГЛЯД CSV</button>`;
-    return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.import_status)}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не прив’язано до концерту')} · ${esc(document.source_date || 'дата джерела не задана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без нотатки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('uk-UA') : ''}</span></div><div class="document-actions">${preview}<button class="text-button" type="button" data-open-document="${esc(document.id)}">ВІДКРИТИ</button></div></article>`;
+    const apply = document.document_type === 'META_CSV' ? `<button class="text-button" type="button" data-apply-meta="${esc(document.id)}">ЗАСТОСУВАТИ META</button>` : '';
+    return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.import_status)}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не прив’язано до концерту')} · ${esc(document.source_date || 'дата джерела не задана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без нотатки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('uk-UA') : ''}</span></div><div class="document-actions">${preview}${apply}<button class="text-button" type="button" data-open-document="${esc(document.id)}">ВІДКРИТИ</button></div></article>`;
   }).join('') || '<div class="empty">Документів ще немає.</div>';
 }
 
@@ -470,6 +471,40 @@ async function previewCsvDocument(id) {
   const headers = rows[0], samples = rows.slice(1, 7);
   preview.classList.remove('error');
   preview.innerHTML = `<p class="eyebrow">PREVIEW · ${esc(document.source_name)}</p><p>Виявлено ${fmt(Math.max(0, rows.length - 1))} рядків і ${fmt(headers.length)} колонок. Це лише перегляд: жоден рядок не застосовано до кампаній або продажів.</p><div class="csv-table"><table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join('')}</tr></thead><tbody>${samples.map(row => `<tr>${headers.map((_, index) => `<td>${esc(row[index] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
+async function openMetaApplyForm(id) {
+  if (!requireEditor('Увійдіть через робочу пошту, щоб застосувати перевірений Meta CSV.')) return;
+  const document = state.documents.find(item => item.id === id);
+  if (!document || document.document_type !== 'META_CSV') return;
+  if (!state.campaigns.length) await loadChannelsModule();
+  if (!state.campaigns.length) { setStatus('Спочатку створіть кампанію для застосування Meta CSV.', true); return; }
+  const form = byId('meta-apply-form'); form.reset(); form.hidden = false;
+  form.elements.source_document_id.value = id; form.elements.rows_reviewed.value = '0'; byId('meta-apply-note').textContent = '';
+  const options = state.campaigns.map(campaign => {
+    const concert = state.concerts.find(item => item.id === campaign.concert_id);
+    return `<option value="${esc(campaign.id)}">${esc(concert?.event_name || 'концерт')} · ${esc(campaign.campaign_name)} · ${esc(campaign.source_code)}</option>`;
+  }).join('');
+  setSelectOptions('meta-apply-campaign', options);
+}
+
+async function applyMetaCsv(event) {
+  event.preventDefault();
+  if (!requireEditor('Увійдіть через робочу пошту, щоб застосувати перевірений Meta CSV.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('meta-apply-note').textContent = 'Застосування перевірених даних…';
+  const { error } = await db.rpc('daria_apply_meta_csv_import', {
+    p_source_document_id: raw.source_document_id,
+    p_campaign_id: raw.campaign_id,
+    p_actual_spend: Number(raw.actual_spend),
+    p_platform_orders: Number(raw.platform_orders),
+    p_platform_value: Number(raw.platform_value),
+    p_rows_reviewed: Number(raw.rows_reviewed || 0)
+  });
+  submit.disabled = false;
+  if (error) { byId('meta-apply-note').textContent = `Meta CSV не застосовано: ${error.message}`; return; }
+  form.hidden = true; setStatus('Перевірені дані Meta CSV застосовано до кампанії');
+  await Promise.all([loadDocumentsModule(), loadChannelsModule(), loadOperations(), loadReportsModule()]);
 }
 
 function setSelectOptions(id, options, includeEmpty = false, emptyLabel = 'НЕ ВКАЗАНО') {
@@ -905,7 +940,11 @@ function bindEvents() {
     if (button) openDocument(button.dataset.openDocument);
     const preview = event.target.closest('[data-preview-csv]');
     if (preview) previewCsvDocument(preview.dataset.previewCsv);
+    const apply = event.target.closest('[data-apply-meta]');
+    if (apply) openMetaApplyForm(apply.dataset.applyMeta);
   });
+  byId('cancel-meta-apply').addEventListener('click', () => { byId('meta-apply-form').hidden = true; });
+  byId('meta-apply-form').addEventListener('submit', applyMetaCsv);
   byId('add-operator').addEventListener('click', () => openOperatorForm());
   byId('cancel-operator').addEventListener('click', () => { byId('operator-form').hidden = true; });
   byId('operator-form').addEventListener('submit', saveOperator);

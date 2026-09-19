@@ -91,11 +91,22 @@ test('documents keep PDF evidence and CSV imports separate from operational fact
   assert.match(js, /не змінює дані автоматично/);
   assert.match(js, /function parseCsv/);
   assert.match(js, /data-preview-csv/);
+  assert.match(js, /daria_apply_meta_csv_import/);
+  assert.match(html, /id="meta-apply-form"/);
   assert.match(html, /id="csv-preview"/);
   assert.match(css, /\.csv-table/);
   assert.match(migration, /create table if not exists public\.daria_source_documents/);
   assert.match(migration, /'application\/pdf'/);
   assert.match(migration, /file_size_limit/);
+});
+
+test('verified Meta CSV application keeps a source-to-campaign audit trail', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0006_meta_csv_verified_apply.sql', import.meta.url), 'utf8');
+  assert.match(migration, /create table if not exists public\.daria_csv_imports/);
+  assert.match(migration, /create or replace function public\.daria_apply_meta_csv_import/);
+  assert.match(migration, /document_type = 'META_CSV'/);
+  assert.match(migration, /application_mode = 'REPLACE_CAMPAIGN_METRICS'/);
+  assert.match(migration, /jsonb_build_object/);
 });
 
 test('operators preserve contract capabilities and unknown fields', () => {
