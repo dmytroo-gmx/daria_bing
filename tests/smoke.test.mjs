@@ -89,6 +89,10 @@ test('documents keep PDF evidence and CSV imports separate from operational fact
   assert.match(js, /const documentBucket = 'legacy-brain-source-documents'/);
   assert.match(js, /createSignedUrl/);
   assert.match(js, /не змінює дані автоматично/);
+  assert.match(js, /function parseCsv/);
+  assert.match(js, /data-preview-csv/);
+  assert.match(html, /id="csv-preview"/);
+  assert.match(css, /\.csv-table/);
   assert.match(migration, /create table if not exists public\.daria_source_documents/);
   assert.match(migration, /'application\/pdf'/);
   assert.match(migration, /file_size_limit/);

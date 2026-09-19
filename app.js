@@ -378,7 +378,8 @@ function renderDocuments() {
   byId('d-applied').textContent = fmt(documents.filter(document => document.import_status === 'APPLIED').length);
   byId('document-list').innerHTML = documents.map(document => {
     const concert = state.concerts.find(item => item.id === document.concert_id);
-    return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.import_status)}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не прив’язано до концерту')} · ${esc(document.source_date || 'дата джерела не задана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без нотатки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('uk-UA') : ''}</span></div><button class="text-button" type="button" data-open-document="${esc(document.id)}">ВІДКРИТИ</button></article>`;
+    const preview = document.document_type === 'PDF_REPORT' ? '' : `<button class="text-button" type="button" data-preview-csv="${esc(document.id)}">ПЕРЕГЛЯД CSV</button>`;
+    return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.import_status)}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не прив’язано до концерту')} · ${esc(document.source_date || 'дата джерела не задана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без нотатки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('uk-UA') : ''}</span></div><div class="document-actions">${preview}<button class="text-button" type="button" data-open-document="${esc(document.id)}">ВІДКРИТИ</button></div></article>`;
   }).join('') || '<div class="empty">Документів ще немає.</div>';
 }
 
@@ -434,6 +435,41 @@ async function openDocument(id) {
   const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
   if (error) { setStatus(`Документ не відкрито: ${error.message}`, true); return; }
   window.open(data.signedUrl, '_blank', 'noopener');
+}
+
+function csvDelimiter(text) {
+  const line = text.replace(/^\uFEFF/, '').split(/\r?\n/).find(value => value.trim()) || '';
+  return [';', ',', '\t'].reduce((best, delimiter) => (line.split(delimiter).length > line.split(best).length ? delimiter : best), ',');
+}
+
+function parseCsv(text, delimiter) {
+  const rows = [[]]; let field = '', quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index], next = text[index + 1];
+    if (character === '"' && quoted && next === '"') { field += '"'; index += 1; continue; }
+    if (character === '"') { quoted = !quoted; continue; }
+    if (!quoted && character === delimiter) { rows.at(-1).push(field.trim()); field = ''; continue; }
+    if (!quoted && (character === '\n' || character === '\r')) { if (character === '\r' && next === '\n') index += 1; rows.at(-1).push(field.trim()); field = ''; rows.push([]); continue; }
+    field += character;
+  }
+  rows.at(-1).push(field.trim());
+  return rows.filter(row => row.some(cell => cell));
+}
+
+async function previewCsvDocument(id) {
+  const document = state.documents.find(item => item.id === id), preview = byId('csv-preview');
+  if (!document) return;
+  preview.hidden = false; preview.textContent = 'Завантаження preview…';
+  const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
+  if (error) { preview.textContent = `CSV не відкрито: ${error.message}`; preview.classList.add('error'); return; }
+  const response = await fetch(data.signedUrl, { cache: 'no-store' });
+  if (!response.ok) { preview.textContent = `CSV не завантажено: HTTP ${response.status}`; preview.classList.add('error'); return; }
+  const csvText = await response.text();
+  const rows = parseCsv(csvText, csvDelimiter(csvText));
+  if (!rows.length) { preview.textContent = 'CSV порожній або не має читабельних рядків.'; preview.classList.add('error'); return; }
+  const headers = rows[0], samples = rows.slice(1, 7);
+  preview.classList.remove('error');
+  preview.innerHTML = `<p class="eyebrow">PREVIEW · ${esc(document.source_name)}</p><p>Виявлено ${fmt(Math.max(0, rows.length - 1))} рядків і ${fmt(headers.length)} колонок. Це лише перегляд: жоден рядок не застосовано до кампаній або продажів.</p><div class="csv-table"><table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join('')}</tr></thead><tbody>${samples.map(row => `<tr>${headers.map((_, index) => `<td>${esc(row[index] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
 function setSelectOptions(id, options, includeEmpty = false, emptyLabel = 'НЕ ВКАЗАНО') {
@@ -867,6 +903,8 @@ function bindEvents() {
   byId('document-list').addEventListener('click', event => {
     const button = event.target.closest('[data-open-document]');
     if (button) openDocument(button.dataset.openDocument);
+    const preview = event.target.closest('[data-preview-csv]');
+    if (preview) previewCsvDocument(preview.dataset.previewCsv);
   });
   byId('add-operator').addEventListener('click', () => openOperatorForm());
   byId('cancel-operator').addEventListener('click', () => { byId('operator-form').hidden = true; });
