@@ -12,7 +12,7 @@ const bookingOperators = [
   ['bilety24', 'Bilety24', 'партнерські продажі']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
-const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -532,7 +532,9 @@ function renderChannels() {
     const planned = Number(campaign.planned_budget || 0), actual = Number(campaign.actual_spend || 0), platformOrders = Number(campaign.platform_reported_orders || 0);
     const delta = actual - planned, currency = concert?.currency || 'PLN';
     const deltaLabel = delta === 0 ? 'за планом' : delta > 0 ? `+${money(delta, currency)} понад план` : `${money(Math.abs(delta), currency)} не використано`;
-    return `<article class="ops-concert"><div><small>${esc(campaign.status)} · ${esc(campaign.attribution_quality)} · ${esc(channel?.name || 'канал не знайдено')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не знайдено')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel} · platform orders ${fmt(platformOrders)}${platformOrders ? ` · platform CPA ${money(actual / platformOrders, currency)}` : ''}</small></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">РЕДАГУВАТИ</button></article>`;
+    const latestImport = state.csvImports.find(item => item.campaign_id === campaign.id);
+    const importNote = latestImport ? ` · Meta CSV: ${new Date(latestImport.applied_at).toLocaleDateString('uk-UA')} · перевірено ${fmt(latestImport.rows_reviewed)} рядків` : ' · Meta CSV ще не застосовувався';
+    return `<article class="ops-concert"><div><small>${esc(campaign.status)} · ${esc(campaign.attribution_quality)} · ${esc(channel?.name || 'канал не знайдено')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не знайдено')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel} · platform orders ${fmt(platformOrders)}${platformOrders ? ` · platform CPA ${money(actual / platformOrders, currency)}` : ''}${importNote}</small></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">РЕДАГУВАТИ</button></article>`;
   }).join('') || '<div class="empty">Кампаній ще немає.</div>';
   byId('tracking-link-list').innerHTML = state.trackingLinks.map(link => {
     const campaign = state.campaigns.find(item => item.id === link.campaign_id);
@@ -552,17 +554,18 @@ async function loadChannelsModule() {
     byId('campaign-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити кампанії.</div>';
     byId('tracking-link-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити посилання.</div>';
     byId('channels-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як відсутність кампаній.';
-    state.channels = []; state.campaigns = []; state.trackingLinks = [];
+    state.channels = []; state.campaigns = []; state.trackingLinks = []; state.csvImports = [];
     return;
   }
   if (!state.concerts.length) await loadOperations();
-  const [channelsResult, campaignsResult, linksResult, operatorsResult] = await Promise.all([
+  const [channelsResult, campaignsResult, linksResult, operatorsResult, importsResult] = await Promise.all([
     db.from('daria_sales_channels').select('*').order('name'),
     db.from('daria_campaigns').select('*').order('start_date', { ascending: false, nullsFirst: false }),
     db.from('daria_tracking_links').select('*').order('created_at', { ascending: false }),
-    db.from('daria_ticketing_operators').select('id,name').order('name')
+    db.from('daria_ticketing_operators').select('id,name').order('name'),
+    db.from('daria_csv_imports').select('campaign_id,rows_reviewed,applied_at').eq('import_kind', 'META_CSV').order('applied_at', { ascending: false })
   ]);
-  const errors = [channelsResult.error && `channels: ${channelsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, linksResult.error && `links: ${linksResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
+  const errors = [channelsResult.error && `channels: ${channelsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, linksResult.error && `links: ${linksResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, importsResult.error && `Meta imports: ${importsResult.error.message}`].filter(Boolean);
   if (errors.length) {
     byId('channels-note').classList.add('error');
     byId('channels-note').textContent = `Частину даних не завантажено: ${errors.join(' · ')}`;
@@ -572,10 +575,11 @@ async function loadChannelsModule() {
   state.campaigns = campaignsResult.data || [];
   state.trackingLinks = linksResult.data || [];
   state.operators = operatorsResult.data || state.operators;
+  state.csvImports = importsResult.data || [];
   populateChannelOptions();
   renderChannels();
   byId('channels-note').classList.remove('error');
-  byId('channels-note').textContent = 'Platform orders не додаються до confirmed sales автоматично. Зв’язок з order зберігається окремо через source code, campaign і tracking link.';
+  byId('channels-note').textContent = 'Platform orders не додаються до confirmed sales автоматично. Якщо Meta CSV застосовано, картка кампанії показує дату й кількість перевірених рядків.';
 }
 
 function openChannelForm(channel = null) {
