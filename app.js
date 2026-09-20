@@ -25,7 +25,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -108,8 +108,12 @@ function riskClass(risk) { return `risk-${String(risk || 'GRAY').toLowerCase()}`
 
 function concertCard(concert, compact = false) {
   const total = state.totals.get(concert.id) || { tickets: 0, revenue: 0 };
+  const finance = state.concertFinance.get(concert.id) || { marketing: new Map(), mandatory: new Map(), nextMandatory: null };
+  const capacity = Number(concert.capacity) || 0, occupancy = capacity ? `${Math.round(total.tickets / capacity * 100)}%` : '—';
+  const breakEven = concert.break_even_tickets == null ? '—' : fmt(Math.max(0, Number(concert.break_even_tickets) - total.tickets));
+  const nextMandatory = finance.nextMandatory ? `${money(finance.nextMandatory.amount, finance.nextMandatory.currency)}${finance.nextMandatory.due_date ? ` · до ${dateLabel(finance.nextMandatory.due_date)}` : ''}` : '—';
   return `<article class="ops-concert ${state.selectedConcertId === concert.id ? 'selected' : ''}" data-concert-id="${esc(concert.id)}">
-    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} билетов · ${money(total.revenue, concert.currency || 'PLN')}</small></div>
+    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} из ${capacity ? fmt(capacity) : '—'} билетов · заполнение ${occupancy} · выручка ${money(total.revenue, concert.currency || 'PLN')}</small><div class="concert-facts"><span>РАСХОДЫ НА КАМПАНИИ: ${formatCurrencyMap(finance.marketing)}</span><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ: ${formatCurrencyMap(finance.mandatory)}</span><span>БЛИЖАЙШИЙ ПЛАТЁЖ: ${nextMandatory}</span>${concert.break_even_tickets == null ? '' : `<span>ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ: ${breakEven} билетов</span>`}</div></div>
     <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(label('risk', concert.risk_status || 'GRAY'))}</span>${compact ? '' : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛИ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">ИЗМЕНИТЬ</button>`}</div>
   </article>`;
 }
@@ -393,7 +397,7 @@ async function loadOperations() {
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
     db.from('daria_campaigns').select('concert_id,actual_spend'),
-    db.from('daria_expenses').select('amount,currency,expense_type,payment_status'),
+    db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date')
   ]);
   const errors = [];
@@ -413,6 +417,18 @@ async function loadOperations() {
     total.tickets += Number(order.ticket_count) || 0;
     total.revenue += Number(order.gross_revenue) || 0;
     state.totals.set(order.concert_id, total);
+  });
+  state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), nextMandatory: null }]));
+  (campaignsResult.data || []).forEach(campaign => {
+    const finance = state.concertFinance.get(campaign.concert_id); if (!finance) return;
+    const currency = state.concerts.find(concert => concert.id === campaign.concert_id)?.currency || 'PLN';
+    finance.marketing.set(currency, (finance.marketing.get(currency) || 0) + (Number(campaign.actual_spend) || 0));
+  });
+  (expensesResult.data || []).filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status)).forEach(expense => {
+    const finance = state.concertFinance.get(expense.concert_id); if (!finance) return;
+    const currency = expense.currency || 'PLN';
+    finance.mandatory.set(currency, (finance.mandatory.get(currency) || 0) + (Number(expense.amount) || 0));
+    if (!finance.nextMandatory || (expense.due_date && (!finance.nextMandatory.due_date || expense.due_date < finance.nextMandatory.due_date))) finance.nextMandatory = expense;
   });
   byId('m-active').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status)).length;
   byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(paidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
