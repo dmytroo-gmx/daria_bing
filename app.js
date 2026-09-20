@@ -875,7 +875,7 @@ function openCampaignForm(campaign = null) {
   if (!state.concerts.length || !state.channels.length) { setStatus('Спочатку додайте концерт і канал.', true); return; }
   const form = byId('campaign-form'); populateChannelOptions(); form.reset(); form.hidden = false;
   byId('campaign-form-mode').textContent = campaign ? 'РЕДАГУВАННЯ КАМПАНІЇ' : 'НОВА КАМПАНІЯ'; byId('campaign-form-title').textContent = campaign ? campaign.campaign_name : 'Додати кампанію'; byId('campaign-form-note').textContent = ''; form.elements.id.value = campaign?.id || '';
-  const fields = ['concert_id', 'channel_id', 'campaign_name', 'source_code', 'planned_budget', 'actual_spend', 'start_date', 'end_date', 'status', 'attribution_quality', 'entries', 'platform_reported_orders', 'platform_reported_value', 'notes'];
+  const fields = ['concert_id', 'channel_id', 'campaign_name', 'source_code', 'planned_budget', 'actual_spend', 'start_date', 'end_date', 'status', 'attribution_quality', 'entries', 'platform_impressions', 'platform_reach', 'platform_link_clicks', 'platform_reported_orders', 'platform_reported_value', 'notes'];
   if (campaign) fields.forEach(field => { form.elements[field].value = campaign[field] ?? ''; });
   else { form.elements.status.value = 'TESTING'; form.elements.attribution_quality.value = 'UNKNOWN'; }
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -898,7 +898,7 @@ async function saveCampaign(event) {
   const code = raw.source_code.trim().toUpperCase();
   if (!/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(code)) { byId('campaign-form-note').textContent = 'Код источника должен состоять из латинских букв, цифр и подчёркиваний.'; return; }
   if (state.campaigns.some(item => item.source_code === code && item.id !== raw.id)) { byId('campaign-form-note').textContent = 'Такой код источника уже есть у другой кампании.'; return; }
-  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: code, planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: code, planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_impressions: numberOrNull(raw.platform_impressions), platform_reach: numberOrNull(raw.platform_reach), platform_link_clicks: numberOrNull(raw.platform_link_clicks), platform_landing_page_views: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-form-note').textContent = 'Збереження…';
   const result = id ? await db.from('daria_campaigns').update(payload).eq('id', id) : await db.from('daria_campaigns').insert(payload);
   submit.disabled = false;
@@ -1235,7 +1235,16 @@ async function saveBooking() {
   setStatus(error ? `Booking не збережено: ${error.message}` : 'Booking збережено для всієї команди', Boolean(error));
 }
 
+function ensureCampaignDeliveryFields() {
+  const form = byId('campaign-form');
+  if (form.elements.platform_impressions) return;
+  const notes = form.elements.notes.closest('label');
+  notes.insertAdjacentHTML('beforebegin', '<label>ПОКАЗЫ ПЛАТФОРМЫ<input name="platform_impressions" min="0" type="number"></label><label>ОХВАТ ПЛАТФОРМЫ<input name="platform_reach" min="0" type="number"></label><label>ПЕРЕХОДЫ ПО ССЫЛКЕ<input name="platform_link_clicks" min="0" type="number"></label>');
+  form.elements.entries.closest('label').firstChild.textContent = 'ПЕРЕХОДЫ НА СТРАНИЦУ';
+}
+
 function bindEvents() {
+  ensureCampaignDeliveryFields();
   document.querySelectorAll('.ops-nav button').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
   document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showView(button.dataset.go)));
   byId('dashboard-period').addEventListener('change', () => { if (state.concerts.length) renderConcerts(); });
