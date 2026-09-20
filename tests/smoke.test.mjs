@@ -140,6 +140,9 @@ test('Meta export rows are parsed before a campaign metric is applied', () => {
   assert.match(js, /потраченная сумма/);
   assert.match(js, /meta-source-row/);
   assert.match(js, /Проверьте кампанию перед применением/);
+  for (const field of ['platform_impressions', 'platform_reach', 'platform_link_clicks', 'platform_landing_page_views']) assert.match(html, new RegExp(`name="${field}"`));
+  assert.match(js, /просмотры целевой страницы/);
+  assert.match(js, /platform_metrics_updated_at/);
 });
 
 test('daily sales snapshots retain a source document rather than becoming unsupported totals', async () => {

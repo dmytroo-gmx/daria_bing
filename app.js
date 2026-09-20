@@ -557,8 +557,8 @@ const importNumber = value => Number(String(value ?? '').replace(/\s/g, '').repl
 function metaRowsFromCsv(text) {
   const rows = parseCsv(text, csvDelimiter(text)); if (rows.length < 2) return [];
   const headers = rows[0], column = phrase => headers.findIndex(header => header.toLowerCase().includes(phrase));
-  const campaign = column('название кампании'), spend = column('потраченная сумма'), purchases = column('покупки'), roas = headers.findIndex(header => header.toLowerCase().includes('результаты') && header.toLowerCase().includes('roas'));
-  return rows.slice(1).map(row => ({ name: String(row[campaign] || '').trim(), spend: importNumber(row[spend]), purchases: importNumber(row[purchases]), roas: importNumber(row[roas]) })).filter(row => row.name);
+  const campaign = column('название кампании'), spend = column('потраченная сумма'), purchases = column('покупки'), impressions = column('показы'), reach = column('охват'), linkClicks = column('клики по ссылке'), landingPageViews = column('просмотры целевой страницы'), roas = headers.findIndex(header => header.toLowerCase().includes('результаты') && header.toLowerCase().includes('roas'));
+  return rows.slice(1).map(row => ({ name: String(row[campaign] || '').trim(), spend: importNumber(row[spend]), purchases: importNumber(row[purchases]), impressions: importNumber(row[impressions]), reach: importNumber(row[reach]), linkClicks: importNumber(row[linkClicks]), landingPageViews: importNumber(row[landingPageViews]), roas: importNumber(row[roas]) })).filter(row => row.name);
 }
 async function metaRowsForDocument(document) {
   const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300); if (error) throw error;
@@ -567,7 +567,7 @@ async function metaRowsForDocument(document) {
 }
 function applyMetaSourceRow() {
   const form = byId('meta-apply-form'), row = metaSourceRows[Number(form.elements.meta_source_row.value)]; if (!row) return;
-  form.elements.actual_spend.value = row.spend || 0; form.elements.platform_orders.value = row.purchases || 0; form.elements.platform_value.value = row.roas ? (row.spend * row.roas).toFixed(2) : '';
+  form.elements.actual_spend.value = row.spend || 0; form.elements.platform_impressions.value = row.impressions || 0; form.elements.platform_reach.value = row.reach || 0; form.elements.platform_link_clicks.value = row.linkClicks || 0; form.elements.platform_landing_page_views.value = row.landingPageViews || 0; form.elements.platform_orders.value = row.purchases || 0; form.elements.platform_value.value = row.roas ? (row.spend * row.roas).toFixed(2) : '';
   const campaign = state.campaigns.find(item => item.campaign_name.trim().toLowerCase() === row.name.toLowerCase()); if (campaign) form.elements.campaign_id.value = campaign.id;
 }
 
@@ -759,8 +759,10 @@ async function applyMetaCsv(event) {
     p_platform_value: Number(raw.platform_value),
     p_rows_reviewed: Number(raw.rows_reviewed || 0)
   });
+  if (error) { submit.disabled = false; byId('meta-apply-note').textContent = `Meta CSV не застосовано: ${error.message}`; return; }
+  const delivery = await db.from('daria_campaigns').update({ platform_impressions: numberOrNull(raw.platform_impressions), platform_reach: numberOrNull(raw.platform_reach), platform_link_clicks: numberOrNull(raw.platform_link_clicks), platform_landing_page_views: numberOrNull(raw.platform_landing_page_views), entries: numberOrNull(raw.platform_landing_page_views), platform_metrics_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', raw.campaign_id);
   submit.disabled = false;
-  if (error) { byId('meta-apply-note').textContent = `Meta CSV не застосовано: ${error.message}`; return; }
+  if (delivery.error) { byId('meta-apply-note').textContent = `Основные показатели применены, но охват и переходы не сохранены: ${delivery.error.message}`; return; }
   form.hidden = true; setStatus('Перевірені дані Meta CSV застосовано до кампанії');
   await Promise.all([loadDocumentsModule(), loadChannelsModule(), loadOperations(), loadReportsModule()]);
 }
@@ -795,8 +797,9 @@ function renderChannels() {
     const confirmed = state.campaignOrders.filter(order => order.campaign_id === campaign.id && order.status === 'PAID' && order.attribution_type === 'CONFIRMED');
     const confirmedTickets = confirmed.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
     const confirmedRevenue = confirmed.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
-    const entries = Number(campaign.entries) || 0;
-    return `<article class="ops-concert"><div><small>${esc(label('campaignStatus', campaign.status))} · ${esc(label('attributionQuality', campaign.attribution_quality))} · ${esc(channel?.name || 'канал не указан')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не указан')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel}${importNote}</small><div class="campaign-metrics"><span>ПЛАТФОРМА: ${fmt(platformOrders)} заказов${platformOrders ? ` · ${money(actual / platformOrders, currency)} за заказ` : ''}</span><span>ПОДТВЕРЖДЕНО: ${fmt(confirmed.length)} заказов · ${fmt(confirmedTickets)} билетов · ${money(confirmedRevenue, currency)}</span><span>СТОИМОСТЬ: заказ ${ratio(actual, confirmed.length, ` ${currency}`)} · билет ${ratio(actual, confirmedTickets, ` ${currency}`)} · окупаемость ${ratio(confirmedRevenue, actual, '×')}</span>${entries ? `<span>КОНВЕРСИЯ ПЕРЕХОД → ЗАКАЗ: ${ratio(confirmed.length * 100, entries, '%')} · ${ratio(confirmedTickets, confirmed.length)} билета/заказ</span>` : ''}</div></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">ИЗМЕНИТЬ</button></article>`;
+    const entries = Number(campaign.entries) || 0, impressions = Number(campaign.platform_impressions) || 0, reach = Number(campaign.platform_reach) || 0, linkClicks = Number(campaign.platform_link_clicks) || 0;
+    const delivery = impressions || reach || linkClicks ? `<span>ОХВАТ: ${fmt(reach)} · ПОКАЗЫ: ${fmt(impressions)} · ПЕРЕХОДЫ: ${fmt(linkClicks)}${linkClicks && impressions ? ` · доля переходов ${ratio(linkClicks * 100, impressions, '%')}` : ''}</span>` : '';
+    return `<article class="ops-concert"><div><small>${esc(label('campaignStatus', campaign.status))} · ${esc(label('attributionQuality', campaign.attribution_quality))} · ${esc(channel?.name || 'канал не указан')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не указан')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel}${importNote}</small><div class="campaign-metrics">${delivery}<span>ПЛАТФОРМА: ${fmt(platformOrders)} заказов${platformOrders ? ` · ${money(actual / platformOrders, currency)} за заказ` : ''}</span><span>ПОДТВЕРЖДЕНО: ${fmt(confirmed.length)} заказов · ${fmt(confirmedTickets)} билетов · ${money(confirmedRevenue, currency)}</span><span>СТОИМОСТЬ: заказ ${ratio(actual, confirmed.length, ` ${currency}`)} · билет ${ratio(actual, confirmedTickets, ` ${currency}`)} · окупаемость ${ratio(confirmedRevenue, actual, '×')}</span>${entries ? `<span>КОНВЕРСИЯ ПЕРЕХОД → ЗАКАЗ: ${ratio(confirmed.length * 100, entries, '%')} · ${ratio(confirmedTickets, confirmed.length)} билета/заказ</span>` : ''}</div></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">ИЗМЕНИТЬ</button></article>`;
   }).join('') || '<div class="empty">Кампаній ще немає.</div>';
   byId('tracking-link-list').innerHTML = state.trackingLinks.map(link => {
     const campaign = state.campaigns.find(item => item.id === link.campaign_id);
