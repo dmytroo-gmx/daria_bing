@@ -825,27 +825,27 @@ function populateChannelOptions() {
 }
 
 function renderChannels() {
-  byId('channel-list').innerHTML = state.channels.map(channel => `<article class="ops-concert"><div><small>${esc(channel.code)}</small><h3>${esc(channel.name)}</h3><small>${channel.is_active ? 'ACTIVE' : 'INACTIVE'}</small></div><button class="text-button" type="button" data-edit-channel="${esc(channel.id)}">РЕДАГУВАТИ</button></article>`).join('') || '<div class="empty">Каналів ще немає.</div>';
+  byId('channel-list').innerHTML = state.channels.map(channel => `<article class="ops-concert"><div><small>${esc(channel.code)}</small><h3>${esc(channel.name)}</h3><small>${channel.is_active ? 'АКТИВЕН' : 'НЕАКТИВЕН'}</small></div><button class="text-button" type="button" data-edit-channel="${esc(channel.id)}">ИЗМЕНИТЬ</button></article>`).join('') || '<div class="empty">Каналов ещё нет.</div>';
   byId('campaign-list').innerHTML = state.campaigns.map(campaign => {
     const channel = state.channels.find(item => item.id === campaign.channel_id);
     const concert = state.concerts.find(item => item.id === campaign.concert_id);
     const planned = Number(campaign.planned_budget || 0), actual = Number(campaign.actual_spend || 0), platformOrders = Number(campaign.platform_reported_orders || 0);
     const delta = actual - planned, currency = concert?.currency || 'PLN';
-    const deltaLabel = delta === 0 ? 'за планом' : delta > 0 ? `+${money(delta, currency)} понад план` : `${money(Math.abs(delta), currency)} не використано`;
+    const deltaLabel = delta === 0 ? 'по плану' : delta > 0 ? `+${money(delta, currency)} сверх плана` : `${money(Math.abs(delta), currency)} не использовано`;
     const latestImport = state.csvImports.find(item => item.campaign_id === campaign.id);
-    const importNote = latestImport ? ` · Meta CSV: ${new Date(latestImport.applied_at).toLocaleDateString('uk-UA')} · перевірено ${fmt(latestImport.rows_reviewed)} рядків` : ' · Meta CSV ще не застосовувався';
+    const importNote = latestImport ? ` · выгрузка Meta: ${new Date(latestImport.applied_at).toLocaleDateString('ru-RU')} · проверено ${fmt(latestImport.rows_reviewed)} строк` : ' · выгрузка Meta ещё не применялась';
     const confirmed = state.campaignOrders.filter(order => order.campaign_id === campaign.id && order.status === 'PAID' && order.attribution_type === 'CONFIRMED');
     const confirmedTickets = confirmed.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
     const confirmedRevenue = confirmed.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
     const entries = Number(campaign.entries) || 0, impressions = Number(campaign.platform_impressions) || 0, reach = Number(campaign.platform_reach) || 0, linkClicks = Number(campaign.platform_link_clicks) || 0;
     const delivery = impressions || reach || linkClicks ? `<span>ОХВАТ: ${fmt(reach)} · ПОКАЗЫ: ${fmt(impressions)} · ПЕРЕХОДЫ: ${fmt(linkClicks)}${linkClicks && impressions ? ` · доля переходов ${ratio(linkClicks * 100, impressions, '%')}` : ''}</span>` : '';
     return `<article class="ops-concert"><div><small>${esc(label('campaignStatus', campaign.status))} · ${esc(label('attributionQuality', campaign.attribution_quality))} · ${esc(channel?.name || 'канал не указан')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не указан')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel}${importNote}</small><div class="campaign-metrics">${delivery}<span>ПЛАТФОРМА: ${fmt(platformOrders)} заказов${platformOrders ? ` · ${money(actual / platformOrders, currency)} за заказ` : ''}</span><span>ПОДТВЕРЖДЕНО: ${fmt(confirmed.length)} заказов · ${fmt(confirmedTickets)} билетов · ${money(confirmedRevenue, currency)}</span><span>СТОИМОСТЬ: заказ ${ratio(actual, confirmed.length, ` ${currency}`)} · билет ${ratio(actual, confirmedTickets, ` ${currency}`)} · окупаемость ${ratio(confirmedRevenue, actual, '×')}</span>${entries ? `<span>КОНВЕРСИЯ ПЕРЕХОД → ЗАКАЗ: ${ratio(confirmed.length * 100, entries, '%')} · ${ratio(confirmedTickets, confirmed.length)} билета/заказ</span>` : ''}</div></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">ИЗМЕНИТЬ</button></article>`;
-  }).join('') || '<div class="empty">Кампаній ще немає.</div>';
+  }).join('') || '<div class="empty">Кампаний ещё нет.</div>';
   byId('tracking-link-list').innerHTML = state.trackingLinks.map(link => {
     const campaign = state.campaigns.find(item => item.id === link.campaign_id);
     const channel = state.channels.find(item => item.id === link.channel_id);
-    return `<article class="expense-row"><div><small>${esc(link.status)} · ${esc(channel?.name || 'канал не вказано')} · ${esc(campaign?.campaign_name || 'кампанія не вказана')}</small><h3>${esc(link.source_code)}</h3><small>${esc(link.destination_url || link.statistical_url || 'URL не задано')}</small></div><strong class="expense-amount">${esc(link.utm_source || '—')} / ${esc(link.utm_medium || '—')}</strong><div class="expense-meta"><span>${esc(link.promo_code || 'без promo code')}</span><span>${link.utm_campaign ? `utm: ${esc(link.utm_campaign)}` : 'utm campaign не задано'}</span></div><button class="text-button" type="button" data-edit-link="${esc(link.id)}">РЕДАГУВАТИ</button></article>`;
-  }).join('') || '<div class="empty">Tracking links ще немає.</div>';
+    return `<article class="expense-row"><div><small>${esc(label('linkStatus', link.status))} · ${esc(channel?.name || 'канал не указан')} · ${esc(campaign?.campaign_name || 'кампания не указана')}</small><h3>${esc(link.source_code)}</h3><small>${esc(link.destination_url || link.statistical_url || 'адрес не указан')}</small></div><strong class="expense-amount">${esc(link.utm_source || '—')} / ${esc(link.utm_medium || '—')}</strong><div class="expense-meta"><span>${esc(link.promo_code || 'без промокода')}</span><span>${link.utm_campaign ? `метка: ${esc(link.utm_campaign)}` : 'метка кампании не указана'}</span></div><button class="text-button" type="button" data-edit-link="${esc(link.id)}">ИЗМЕНИТЬ</button></article>`;
+  }).join('') || '<div class="empty">Ссылок для учёта ещё нет.</div>';
   byId('c-active').textContent = state.campaigns.filter(campaign => ['TESTING', 'WORKING'].includes(campaign.status)).length;
   byId('c-spend').textContent = money(state.campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
   byId('c-platform-orders').textContent = fmt(state.campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_orders) || 0), 0));
@@ -855,10 +855,10 @@ function renderChannels() {
 async function loadChannelsModule() {
   if (!state.session) {
     ['c-active', 'c-spend', 'c-platform-orders', 'c-active-links'].forEach(id => { byId(id).textContent = '—'; });
-    byId('channel-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити канали.</div>';
-    byId('campaign-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити кампанії.</div>';
-    byId('tracking-link-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити посилання.</div>';
-    byId('channels-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як відсутність кампаній.';
+    byId('channel-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы загрузить каналы.</div>';
+    byId('campaign-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы загрузить кампании.</div>';
+    byId('tracking-link-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы загрузить ссылки.</div>';
+    byId('channels-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не означает отсутствия кампаний.';
     state.channels = []; state.campaigns = []; state.campaignOrders = []; state.trackingLinks = []; state.csvImports = [];
     return;
   }
@@ -886,7 +886,7 @@ async function loadChannelsModule() {
   populateChannelOptions();
   renderChannels();
   byId('channels-note').classList.remove('error');
-  byId('channels-note').textContent = 'Platform orders не додаються до confirmed sales автоматично. Якщо Meta CSV застосовано, картка кампанії показує дату й кількість перевірених рядків.';
+  byId('channels-note').textContent = 'Заказы по данным рекламной платформы не добавляются к подтверждённым продажам автоматически. Если применена выгрузка Meta, карточка кампании показывает дату и количество проверенных строк.';
 }
 
 function openChannelForm(channel = null) {

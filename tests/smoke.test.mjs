@@ -105,13 +105,13 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /daria_sales_channels'\)\.select\('\*'\)/);
   assert.match(js, /daria_campaigns'\)\.select\('\*'\)/);
   assert.match(js, /daria_tracking_links'\)\.select\('\*'\)/);
-  assert.match(js, /Platform orders не додаються до confirmed sales автоматично/);
+  assert.match(js, /Заказы по данным рекламной платформы не добавляются/);
   assert.match(js, /план \$\{money\(planned, currency\)\}/);
   assert.match(js, /ПЛАТФОРМА:/);
   assert.match(js, /ПОДТВЕРЖДЕНО:/);
   assert.match(js, /КОНВЕРСИЯ ПЕРЕХОД → ЗАКАЗ/);
   assert.match(js, /campaignOrders/);
-  assert.match(js, /Meta CSV ще не застосовувався/);
+  assert.match(js, /выгрузка Meta ещё не применялась/);
   assert.match(js, /db\.from\('daria_csv_imports'\)/);
   assert.match(js, /function generateCampaignSourceCode/);
   assert.match(js, /Такой код источника уже есть/);
