@@ -41,6 +41,7 @@ test('concerts support create, edit, detail, filters and all schema statuses', (
   assert.match(html, /id="concert-detail"/);
   assert.match(html, /id="concert-filter"/);
   assert.match(js, /data-action="edit"/);
+  assert.match(js, /dashboard-concerts'\)\.addEventListener\('click'/);
   assert.match(js, /async function updateConcertStatus/);
   for (const status of ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED']) assert.match(html, new RegExp(status));
 });

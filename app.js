@@ -114,7 +114,7 @@ function concertCard(concert, compact = false) {
   const nextMandatory = finance.nextMandatory ? `${money(finance.nextMandatory.amount, finance.nextMandatory.currency)}${finance.nextMandatory.due_date ? ` · до ${dateLabel(finance.nextMandatory.due_date)}` : ''}` : '—';
   return `<article class="ops-concert ${state.selectedConcertId === concert.id ? 'selected' : ''}" data-concert-id="${esc(concert.id)}">
     <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} из ${capacity ? fmt(capacity) : '—'} билетов · заполнение ${occupancy} · выручка ${money(total.revenue, concert.currency || 'PLN')}</small><div class="concert-facts"><span>РАСХОДЫ НА КАМПАНИИ: ${formatCurrencyMap(finance.marketing)}</span><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ: ${formatCurrencyMap(finance.mandatory)}</span><span>БЛИЖАЙШИЙ ПЛАТЁЖ: ${nextMandatory}</span>${concert.break_even_tickets == null ? '' : `<span>ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ: ${breakEven} билетов</span>`}</div></div>
-    <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(label('risk', concert.risk_status || 'GRAY'))}</span>${compact ? '' : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛИ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">ИЗМЕНИТЬ</button>`}</div>
+    <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(label('risk', concert.risk_status || 'GRAY'))}</span>${compact ? `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ОТКРЫТЬ</button>` : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛИ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">ИЗМЕНИТЬ</button>`}</div>
   </article>`;
 }
 
@@ -1292,6 +1292,12 @@ function bindEvents() {
     const concert = state.concerts.find(item => item.id === button.dataset.id);
     if (button.dataset.action === 'details') selectConcert(button.dataset.id);
     if (button.dataset.action === 'edit') openConcertForm(concert);
+  });
+  byId('dashboard-concerts').addEventListener('click', event => {
+    const button = event.target.closest('[data-action="details"]');
+    if (!button) return;
+    showView('concerts');
+    selectConcert(button.dataset.id);
   });
   byId('add-order').addEventListener('click', () => openOrderForm());
   byId('add-campaign-result').addEventListener('click', async () => { await loadSalesModule(); openOrderForm(); });
