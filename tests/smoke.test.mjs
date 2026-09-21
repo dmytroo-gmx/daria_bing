@@ -176,6 +176,9 @@ test('operators preserve contract capabilities and unknown fields', () => {
   assert.match(js, /Порожнє поле означає «не зафіксовано»/);
   assert.match(html, /id="operator-comparison"/);
   assert.match(js, /function renderOperators/);
+  assert.match(js, /function capability/);
+  assert.match(js, /Серверная передача/);
+  assert.match(js, /Доступ к электронной почте/);
   assert.match(js, /НЕ ЗАФИКСИРОВАНО/);
 });
 
