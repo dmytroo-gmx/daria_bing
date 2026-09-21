@@ -34,6 +34,30 @@ const dateLabel = value => value ? new Intl.DateTimeFormat('ru-RU', { day: '2-di
 const label = (group, value) => labels[group]?.[value] || String(value ?? '—').replaceAll('_', ' ');
 const help = (text, explanation) => `${text} <span class="term-help" tabindex="0" data-tooltip="${esc(explanation)}">?</span>`;
 
+const staticRussianLabels = {
+  'УСІ': 'ВСЕ', 'ДОДАТИ': 'ДОБАВИТЬ', 'РЕДАГУВАТИ': 'ИЗМЕНИТЬ', 'ЗБЕРЕГТИ': 'СОХРАНИТЬ', 'ЗАКРИТИ': 'ЗАКРЫТЬ',
+  'НОВИЙ КАНАЛ': 'НОВЫЙ КАНАЛ', 'Додати канал': 'Добавить канал', 'АКТИВНИЙ': 'АКТИВЕН',
+  'НОВЕ ДЖЕРЕЛО': 'НОВЫЙ ИСТОЧНИК', 'Завантажити документ': 'Загрузить документ', 'ЗАВАНТАЖИТИ': 'ЗАГРУЗИТЬ',
+  'НЕ ПРИВ’ЯЗАНО': 'НЕ ПРИВЯЗАНО', 'ДАТА ДЖЕРЕЛА': 'ДАТА ИСТОЧНИКА', 'НОТАТКИ': 'ЗАМЕТКИ',
+  'PDF REPORT': 'ОТЧЁТ В ДОКУМЕНТЕ', 'META CSV': 'ВЫГРУЗКА META', 'OPERATOR CSV': 'ВЫГРУЗКА ОПЕРАТОРА', 'OTHER CSV': 'ДРУГАЯ ВЫГРУЗКА',
+  'NEW — ПОТРЕБУЄ ПЕРЕВІРКИ': 'НОВОЕ — ТРЕБУЕТ ПРОВЕРКИ', 'REVIEWED': 'ПРОВЕРЕНО', 'APPLIED': 'ПРИМЕНЕНО', 'REJECTED': 'ОТКЛОНЕНО',
+  'WEBSITE': 'САЙТ', 'MARKETPLACE COMMISSION, %': 'КОМИССИЯ МАРКЕТПЛЕЙСА, %', 'OWN SALES COMMISSION, %': 'КОМИССИЯ СОБСТВЕННЫХ ПРОДАЖ, %',
+  'PAYMENT FEE, %': 'КОМИССИЯ ПЛАТЕЖА, %', 'SETUP FEE': 'РАЗОВЫЙ ЗАПУСК', 'MONTHLY FEE': 'ЕЖЕМЕСЯЧНАЯ ПЛАТА', 'CAPI FEE': 'ПЛАТА ЗА СЕРВЕРНУЮ ПЕРЕДАЧУ',
+  'EXCLUSIVITY REQUIRED': 'ЭКСКЛЮЗИВНОСТЬ', 'NEGOTIATION STATUS': 'СТАТУС ПЕРЕГОВОРОВ', 'EXCLUSIVITY TERMS': 'УСЛОВИЯ ЭКСКЛЮЗИВНОСТИ', 'CONTRACT NOTES': 'ЗАМЕТКИ ПО ДОГОВОРУ',
+  'Statistical links': 'Статистические ссылки', 'Promo codes': 'Промокоды', 'SMS marketing': 'СМС-рассылки', 'Email marketing': 'Рассылки по почте'
+};
+
+function localizeStaticInterface() {
+  const translate = value => Object.entries(staticRussianLabels).reduce((result, [from, to]) => result.replaceAll(from, to), value);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node => { node.nodeValue = translate(node.nodeValue); });
+  document.querySelectorAll('[data-tooltip],[placeholder]').forEach(element => {
+    if (element.dataset.tooltip) element.dataset.tooltip = translate(element.dataset.tooltip);
+    if (element.placeholder) element.placeholder = translate(element.placeholder);
+  });
+}
+
 function setStatus(message, isError = false) {
   byId('sync-status').textContent = message;
   byId('sync-status').classList.toggle('error', isError);
@@ -1374,6 +1398,7 @@ function bindEvents() {
 }
 
 async function init() {
+  localizeStaticInterface();
   bindEvents();
   renderBooking();
   const initialView = location.hash.slice(1);

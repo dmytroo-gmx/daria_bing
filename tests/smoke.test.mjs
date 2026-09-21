@@ -14,6 +14,12 @@ test('the product is branded Legacy Brain', () => {
   assert.doesNotMatch(html, /DARIA BING/i);
 });
 
+test('static UI labels are localized for Russian operation', () => {
+  assert.match(js, /function localizeStaticInterface/);
+  assert.match(js, /'WEBSITE': 'САЙТ'/);
+  assert.match(js, /'PDF REPORT': 'ОТЧЁТ В ДОКУМЕНТЕ'/);
+});
+
 test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /const detailTabs = \['OVERVIEW', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
