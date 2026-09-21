@@ -195,6 +195,7 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА/);
   assert.match(js, /campaignOrders\.length/);
   assert.match(js, /order\.attribution_type === 'CONFIRMED'/);
+  assert.match(js, /const currency = concert\.currency \|\| 'PLN'/);
   assert.match(js, /ОКУПАЕМОСТЬ ПО ПЛАТФОРМЕ/);
   assert.match(js, /async function loadReportsModule/);
   assert.match(js, /Platform і confirmed навмисно не об’єднуються/);
