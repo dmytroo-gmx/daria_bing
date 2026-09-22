@@ -164,13 +164,14 @@ function renderConcerts() {
   byId('concerts-list').innerHTML = visible.map(concert => concertCard(concert)).join('') || '<div class="empty">По этому фильтру концертов нет.</div>';
 }
 
-function renderDashboardAttention(staleSnapshots, snapshotsUnavailable = false) {
+function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailable = false) {
   const target = byId('dashboard-attention');
-  if (snapshotsUnavailable) { target.innerHTML = '<div class="empty">Не удалось проверить свежесть срезов: данные не подменены нулями.</div>'; return; }
+  if (unavailable) { target.innerHTML = '<div class="empty">Не удалось проверить полноту данных: значения не подменены нулями.</div>'; return; }
   const missingCapacity = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !Number(concert.capacity));
   const items = [
     ...staleSnapshots.map(concert => ({ concert, text: 'Нет подтверждённого среза продаж за последние два дня.' })),
-    ...missingCapacity.filter(concert => !staleSnapshots.some(item => item.id === concert.id)).map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.' }))
+    ...sourceMissing.filter(concert => !staleSnapshots.some(item => item.id === concert.id)).map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.' })),
+    ...missingCapacity.filter(concert => !staleSnapshots.some(item => item.id === concert.id) && !sourceMissing.some(item => item.id === concert.id)).map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.' }))
   ];
   target.innerHTML = items.map(({ concert, text }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ОТКРЫТЬ</button></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
@@ -436,12 +437,13 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
     db.from('daria_campaigns').select('concert_id,actual_spend'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
-    db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date')
+    db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
+    db.from('daria_documents').select('concert_id')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
@@ -449,6 +451,7 @@ async function loadOperations() {
   if (campaignsResult.error) errors.push(`campaigns: ${campaignsResult.error.message}`);
   if (expensesResult.error) errors.push(`expenses: ${expensesResult.error.message}`);
   if (snapshotsResult.error) errors.push(`daily snapshots: ${snapshotsResult.error.message}`);
+  if (documentsResult.error) errors.push(`documents: ${documentsResult.error.message}`);
   if (concertsResult.error) {
     byId('dashboard-concerts').innerHTML = '<div class="empty">Немає доступу до реєстру концертів. Увійдіть у робочий акаунт.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Нет доступа к реестру концертов.</div>';
@@ -500,8 +503,10 @@ async function loadOperations() {
   });
   const freshCutoff = new Date(); freshCutoff.setHours(0, 0, 0, 0); freshCutoff.setDate(freshCutoff.getDate() - 2);
   const staleSnapshots = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && (!latestSnapshots.get(concert.id) || new Date(`${latestSnapshots.get(concert.id)}T12:00:00`) < freshCutoff));
+  const concertSources = new Set((documentsResult.data || []).map(document => document.concert_id).filter(Boolean));
+  const sourceMissing = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !concertSources.has(concert.id));
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
-  renderDashboardAttention(staleSnapshots, Boolean(snapshotsResult.error || concertsResult.error));
+  renderDashboardAttention(staleSnapshots, sourceMissing, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error));
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
   note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: PAID orders, внесені витрати та campaigns.actual_spend. «Без свіжого зрізу» означає відсутність нового підтвердженого звіту для ${fmt(staleSnapshots.length)} активних концертів, а не відсутність продажів.`;
