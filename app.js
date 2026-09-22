@@ -169,11 +169,11 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailabl
   if (unavailable) { target.innerHTML = '<div class="empty">Не удалось проверить полноту данных: значения не подменены нулями.</div>'; return; }
   const missingCapacity = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !Number(concert.capacity));
   const items = [
-    ...staleSnapshots.map(concert => ({ concert, text: 'Нет подтверждённого среза продаж за последние два дня.' })),
-    ...sourceMissing.filter(concert => !staleSnapshots.some(item => item.id === concert.id)).map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.' })),
-    ...missingCapacity.filter(concert => !staleSnapshots.some(item => item.id === concert.id) && !sourceMissing.some(item => item.id === concert.id)).map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.' }))
+    ...staleSnapshots.map(concert => ({ concert, text: 'Нет подтверждённого среза продаж за последние два дня.', action: 'details', button: 'ОТКРЫТЬ КОНЦЕРТ' })),
+    ...sourceMissing.map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.', action: 'source', button: 'ДОБАВИТЬ ФАЙЛ' })),
+    ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'details', button: 'ОТКРЫТЬ КОНЦЕРТ' }))
   ];
-  target.innerHTML = items.map(({ concert, text }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ОТКРЫТЬ</button></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
+  target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
@@ -1361,8 +1361,10 @@ function bindEvents() {
     selectConcert(button.dataset.id);
   });
   byId('dashboard-attention').addEventListener('click', event => {
-    const button = event.target.closest('[data-action="details"]');
+    const button = event.target.closest('[data-action]');
     if (!button) return;
+    const concert = state.concerts.find(item => item.id === button.dataset.id);
+    if (button.dataset.action === 'source') { showView('documents'); openDocumentForm(concert); return; }
     showView('concerts');
     selectConcert(button.dataset.id);
   });
