@@ -163,6 +163,17 @@ function renderConcerts() {
   byId('concerts-list').innerHTML = visible.map(concert => concertCard(concert)).join('') || '<div class="empty">По этому фильтру концертов нет.</div>';
 }
 
+function renderDashboardAttention(staleSnapshots, snapshotsUnavailable = false) {
+  const target = byId('dashboard-attention');
+  if (snapshotsUnavailable) { target.innerHTML = '<div class="empty">Не удалось проверить свежесть срезов: данные не подменены нулями.</div>'; return; }
+  const missingCapacity = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !Number(concert.capacity));
+  const items = [
+    ...staleSnapshots.map(concert => ({ concert, text: 'Нет подтверждённого среза продаж за последние два дня.' })),
+    ...missingCapacity.filter(concert => !staleSnapshots.some(item => item.id === concert.id)).map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.' }))
+  ];
+  target.innerHTML = items.map(({ concert, text }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ОТКРЫТЬ</button></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
+}
+
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
 
 function snapshotChanges(snapshots) {
@@ -416,6 +427,7 @@ async function loadOperations() {
   if (!state.session) {
     ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk', 'm-stale'].forEach(id => { byId(id).textContent = '—'; });
     byId('dashboard-concerts').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб побачити операційні дані.</div>';
+    byId('dashboard-attention').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть проверку данных.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр концертів.</div>';
     byId('dashboard-note').classList.remove('error');
     byId('dashboard-note').textContent = 'Дані приховані політиками доступу. Порожня відповідь без авторизації не трактується як нуль.';
@@ -438,6 +450,7 @@ async function loadOperations() {
   if (snapshotsResult.error) errors.push(`daily snapshots: ${snapshotsResult.error.message}`);
   if (concertsResult.error) {
     byId('dashboard-concerts').innerHTML = '<div class="empty">Немає доступу до реєстру концертів. Увійдіть у робочий акаунт.</div>';
+    byId('dashboard-attention').innerHTML = '<div class="empty">Нет доступа к реестру концертов.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Не вдалося завантажити концерти.</div>';
   } else state.concerts = concertsResult.data || [];
   state.totals = new Map();
@@ -487,6 +500,7 @@ async function loadOperations() {
   const freshCutoff = new Date(); freshCutoff.setHours(0, 0, 0, 0); freshCutoff.setDate(freshCutoff.getDate() - 2);
   const staleSnapshots = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && (!latestSnapshots.get(concert.id) || new Date(`${latestSnapshots.get(concert.id)}T12:00:00`) < freshCutoff));
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
+  renderDashboardAttention(staleSnapshots, Boolean(snapshotsResult.error || concertsResult.error));
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
   note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: PAID orders, внесені витрати та campaigns.actual_spend. «Без свіжого зрізу» означає відсутність нового підтвердженого звіту для ${fmt(staleSnapshots.length)} активних концертів, а не відсутність продажів.`;
@@ -1335,6 +1349,12 @@ function bindEvents() {
     if (button.dataset.action === 'edit') openConcertForm(concert);
   });
   byId('dashboard-concerts').addEventListener('click', event => {
+    const button = event.target.closest('[data-action="details"]');
+    if (!button) return;
+    showView('concerts');
+    selectConcert(button.dataset.id);
+  });
+  byId('dashboard-attention').addEventListener('click', event => {
     const button = event.target.closest('[data-action="details"]');
     if (!button) return;
     showView('concerts');

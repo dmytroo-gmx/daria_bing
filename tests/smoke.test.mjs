@@ -61,7 +61,9 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.doesNotMatch(js, /quantity,gross_amount/);
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
   assert.match(html, /id="m-stale"/);
+  assert.match(html, /id="dashboard-attention"/);
   assert.match(js, /daily snapshots/);
+  assert.match(js, /function renderDashboardAttention/);
   assert.match(js, /не відсутність продажів/);
 });
 
