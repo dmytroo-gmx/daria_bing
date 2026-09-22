@@ -234,6 +234,10 @@ test('campaign platform delivery metrics have an additive migration', async () =
 test('operator contacts and distribution fields have an additive migration', async () => {
   const migration = await readFile(new URL('../supabase/migrations/0010_operator_contact_and_distribution_fields.sql', import.meta.url), 'utf8');
   for (const column of ['organic_distribution', 'google_ads_support', 'meta_ads_support', 'account_manager_name', 'account_manager_email', 'account_manager_phone', 'last_offer_date']) assert.match(migration, new RegExp(`add column if not exists ${column}`));
+  for (const field of ['organic_distribution', 'google_ads_support', 'meta_ads_support', 'account_manager_name', 'account_manager_email', 'account_manager_phone', 'last_offer_date']) assert.match(js, new RegExp(`name=\\"${field}\\"`));
+  assert.match(js, /function ensureOperatorProfileFields/);
+  assert.match(js, /Органическое распространение/);
+  assert.match(js, /Ответственный менеджер/);
 });
 
 test('managers can read but cannot directly edit the audit log', async () => {
