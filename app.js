@@ -1091,12 +1091,12 @@ function reportTable(headers, rows, emptyMessage) {
   return `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
 
-function renderChannelReport(metrics, concerts, concertId, city) {
+function renderChannelReport(metrics, concerts, concertIds, channelId) {
   const concertById = new Map(concerts.map(concert => [concert.id, concert]));
   const grouped = new Map();
   metrics.forEach(metric => {
     const concert = concertById.get(metric.concert_id);
-    if (!concert || (concertId !== 'ALL' && metric.concert_id !== concertId) || (city !== 'ALL' && concert.city !== city)) return;
+    if (!concert || !concertIds.has(metric.concert_id) || (channelId !== 'ALL' && metric.channel_id !== channelId)) return;
     const currency = concert.currency || 'PLN';
     const key = `${metric.channel_id}:${currency}`;
     const row = grouped.get(key) || { name: metric.channel_name || 'Канал не указан', currency, campaigns: 0, spend: 0, platformOrders: 0, confirmedOrders: 0, confirmedTickets: 0, confirmedRevenue: 0 };
@@ -1112,13 +1112,13 @@ function renderChannelReport(metrics, concerts, concertId, city) {
   byId('channel-report-list').innerHTML = reportTable(['КАНАЛ', 'РАСХОДЫ', 'ЗАКАЗЫ ПЛАТФОРМЫ', 'ПОДТВЕРЖДЁННЫЕ ЗАКАЗЫ', 'БИЛЕТЫ', 'ВЫРУЧКА', 'СТОИМОСТЬ БИЛЕТА', 'ОКУПАЕМОСТЬ'], rows, 'Нет кампаний, подходящих под выбранный фильтр.');
 }
 
-function renderOperatorReport(orders, operators, concerts, concertId, city) {
+function renderOperatorReport(orders, operators, concerts, concertIds) {
   const concertById = new Map(concerts.map(concert => [concert.id, concert]));
   const operatorById = new Map(operators.map(operator => [operator.id, operator.name]));
   const grouped = new Map();
   orders.filter(order => order.status === 'PAID' && order.operator_id).forEach(order => {
     const concert = concertById.get(order.concert_id);
-    if (!concert || (concertId !== 'ALL' && order.concert_id !== concertId) || (city !== 'ALL' && concert.city !== city)) return;
+    if (!concert || !concertIds.has(order.concert_id)) return;
     const currency = order.currency || concert.currency || 'PLN';
     const key = `${order.operator_id}:${currency}`;
     const row = grouped.get(key) || { name: operatorById.get(order.operator_id) || 'Оператор не указан', currency, orders: 0, tickets: 0, revenue: 0 };
@@ -1131,14 +1131,17 @@ function renderOperatorReport(orders, operators, concerts, concertId, city) {
   byId('operator-report-list').innerHTML = reportTable(['ОПЕРАТОР', 'ОПЛАЧЕННЫЕ ЗАКАЗЫ', 'БИЛЕТЫ', 'ВЫРУЧКА', 'СРЕДНЯЯ ЦЕНА БИЛЕТА'], rows, 'Нет оплаченных заказов операторов, подходящих под выбранный фильтр.');
 }
 
-function populateReportFilters(concerts) {
-  const concertFilter = byId('report-concert-filter'), cityFilter = byId('report-city-filter');
-  const selectedConcert = concertFilter.value || 'ALL', selectedCity = cityFilter.value || 'ALL';
+function populateReportFilters(concerts, metrics) {
+  const concertFilter = byId('report-concert-filter'), cityFilter = byId('report-city-filter'), channelFilter = byId('report-channel-filter');
+  const selectedConcert = concertFilter.value || 'ALL', selectedCity = cityFilter.value || 'ALL', selectedChannel = channelFilter.value || 'ALL';
   concertFilter.innerHTML = `<option value="ALL">ВСЕ</option>${concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('')}`;
   const cities = [...new Set(concerts.map(concert => concert.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
   cityFilter.innerHTML = `<option value="ALL">ВСЕ</option>${cities.map(item => `<option value="${esc(item)}">${esc(item)}</option>`).join('')}`;
+  const channels = [...new Map(metrics.filter(metric => metric.channel_id && metric.channel_name).map(metric => [metric.channel_id, metric.channel_name])).entries()].sort((left, right) => left[1].localeCompare(right[1], 'ru'));
+  channelFilter.innerHTML = `<option value="ALL">ВСЕ</option>${channels.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('')}`;
   concertFilter.value = [...concertFilter.options].some(option => option.value === selectedConcert) ? selectedConcert : 'ALL';
   cityFilter.value = [...cityFilter.options].some(option => option.value === selectedCity) ? selectedCity : 'ALL';
+  channelFilter.value = [...channelFilter.options].some(option => option.value === selectedChannel) ? selectedChannel : 'ALL';
 }
 
 async function loadReportsModule() {
@@ -1159,17 +1162,19 @@ async function loadReportsModule() {
   const errors = [concertsResult.error && `concerts: ${concertsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`, expensesResult.error && `expenses: ${expensesResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, metricsResult.error && `channel metrics: ${metricsResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
   if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не вдалося зібрати звіт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
   const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [];
-  populateReportFilters(concerts);
-  const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value;
-  const paid = orders.filter(order => order.status === 'PAID');
-  byId('r-concerts').textContent = concerts.length;
+  populateReportFilters(concerts, metrics);
+  const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, channelId = byId('report-channel-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
+  const visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city) && (!dateFrom || concert.event_date >= dateFrom) && (!dateTo || concert.event_date <= dateTo));
+  const concertIds = new Set(visibleConcerts.map(concert => concert.id));
+  const paid = orders.filter(order => order.status === 'PAID' && concertIds.has(order.concert_id));
+  const visibleCampaigns = campaigns.filter(campaign => concertIds.has(campaign.concert_id));
+  byId('r-concerts').textContent = visibleConcerts.length;
   byId('r-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  byId('r-spend').textContent = money(campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  byId('r-spend').textContent = money(visibleCampaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
   byId('r-unattributed').textContent = fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  const visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city));
   byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, orders.filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), campaigns.filter(campaign => campaign.concert_id === concert.id))).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
-  renderChannelReport(metrics, concerts, concertId, city);
-  renderOperatorReport(orders, operators, concerts, concertId, city);
+  renderChannelReport(metrics, concerts, concertIds, channelId);
+  renderOperatorReport(orders, operators, concerts, concertIds);
   byId('reports-note').classList.remove('error');
   byId('reports-note').textContent = 'CPA і ROAS показано лише як відношення внесених даних. Platform і confirmed навмисно не об’єднуються.';
 }
@@ -1454,6 +1459,9 @@ function bindEvents() {
   byId('expense-payment-filter').addEventListener('change', renderFinance);
   byId('report-concert-filter').addEventListener('change', loadReportsModule);
   byId('report-city-filter').addEventListener('change', loadReportsModule);
+  byId('report-channel-filter').addEventListener('change', loadReportsModule);
+  byId('report-date-from').addEventListener('change', loadReportsModule);
+  byId('report-date-to').addEventListener('change', loadReportsModule);
   byId('expense-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-expense]');
     if (!button) return;

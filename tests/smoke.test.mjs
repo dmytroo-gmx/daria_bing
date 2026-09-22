@@ -218,6 +218,9 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /function renderOperatorReport/);
   assert.match(html, /id="channel-report-list"/);
   assert.match(html, /id="operator-report-list"/);
+  for (const filter of ['report-concert-filter', 'report-city-filter', 'report-channel-filter', 'report-date-from', 'report-date-to']) assert.match(html, new RegExp(`id="${filter}"`));
+  assert.match(js, /function populateReportFilters\(concerts, metrics\)/);
+  assert.match(js, /channelId !== 'ALL'/);
   assert.match(js, /function concertChannelPerformance/);
   assert.match(js, /Подтверждённые показатели основаны только на оплаченных заказах/);
 });
