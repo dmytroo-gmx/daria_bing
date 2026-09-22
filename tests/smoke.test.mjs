@@ -162,7 +162,7 @@ test('daily sales snapshots retain a source document rather than becoming unsupp
   assert.match(migration, /daria_audit_daily_sales_snapshots/);
   assert.match(js, /source_document_id: raw\.source_document_id/);
   assert.match(html, /Не додавай сюди загальні суми різних операторів/);
-  assert.match(js, /Різних операторів тут не складаємо/);
+  assert.match(js, /Разных операторов здесь не складываем/);
   assert.match(css, /\.snapshot-bars/);
 });
 
