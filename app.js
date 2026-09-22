@@ -50,7 +50,8 @@ const staticRussianLabels = {
   'WEBSITE': 'САЙТ', 'MARKETPLACE COMMISSION, %': 'КОМИССИЯ МАРКЕТПЛЕЙСА, %', 'OWN SALES COMMISSION, %': 'КОМИССИЯ СОБСТВЕННЫХ ПРОДАЖ, %',
   'PAYMENT FEE, %': 'КОМИССИЯ ПЛАТЕЖА, %', 'SETUP FEE': 'РАЗОВЫЙ ЗАПУСК', 'MONTHLY FEE': 'ЕЖЕМЕСЯЧНАЯ ПЛАТА', 'CAPI FEE': 'ПЛАТА ЗА СЕРВЕРНУЮ ПЕРЕДАЧУ',
   'EXCLUSIVITY REQUIRED': 'ЭКСКЛЮЗИВНОСТЬ', 'NEGOTIATION STATUS': 'СТАТУС ПЕРЕГОВОРОВ', 'EXCLUSIVITY TERMS': 'УСЛОВИЯ ЭКСКЛЮЗИВНОСТИ', 'CONTRACT NOTES': 'ЗАМЕТКИ ПО ДОГОВОРУ',
-  'Statistical links': 'Статистические ссылки', 'Promo codes': 'Промокоды', 'SMS marketing': 'СМС-рассылки', 'Email marketing': 'Рассылки по почте'
+  'Meta Pixel': 'Пиксель Meta', 'CAPI': 'Серверная передача', 'GTM': 'Диспетчер тегов', 'Statistical links': 'Статистические ссылки', 'Promo codes': 'Промокоды', 'Marketplace': 'Маркетплейс', 'SMS marketing': 'СМС-рассылки', 'Email marketing': 'Рассылки по почте',
+  'break-even': 'точка безубыточности', 'Операційні дані, не фінансова рекомендація': 'Операционные данные, не финансовая рекомендация'
 };
 
 function localizeStaticInterface() {
