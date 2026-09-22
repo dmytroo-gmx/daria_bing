@@ -127,11 +127,11 @@ async function loadCurrentRole() {
   showAccessStatus();
 }
 
-function requireEditor(message) {
+function requireEditor() {
   if (state.session && ['ADMIN', 'MANAGER'].includes(state.role)) return true;
   if (state.session) { setStatus('Вход выполнен, но роль менеджера ещё не подтверждена', true); return false; }
   toggleLogin(true);
-  setStatus(message, true);
+  setStatus('Войдите через рабочую почту, чтобы вносить изменения.', true);
   return false;
 }
 
@@ -387,14 +387,14 @@ function renderTasks() {
 async function loadTasksModule() {
   if (!state.session) {
     ['t-open', 't-critical', 't-overdue', 't-done'].forEach(id => { byId(id).textContent = '—'; });
-    byId('task-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити задачі.</div>';
-    byId('tasks-note').textContent = 'Задачі приховані політиками доступу; порожня відповідь не трактується як відсутність роботи.';
+    byId('task-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы открыть задачи.</div>';
+    byId('tasks-note').textContent = 'Задачи скрыты правилами доступа; пустой ответ не означает отсутствия работы.';
     state.tasks = []; return;
   }
   if (!state.concerts.length) await loadOperations();
   const { data, error } = await db.from('daria_operational_tasks').select('*').order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
-  if (error) { byId('tasks-note').classList.add('error'); byId('tasks-note').textContent = `Задачі не завантажено: ${error.message}`; return; }
-  state.tasks = data || []; renderTasks(); byId('tasks-note').classList.remove('error'); byId('tasks-note').textContent = 'Задачі фіксують операційну дію. Статус DONE не підтверджує фінансовий результат.';
+  if (error) { byId('tasks-note').classList.add('error'); byId('tasks-note').textContent = `Задачи не загружены: ${error.message}`; return; }
+  state.tasks = data || []; renderTasks(); byId('tasks-note').classList.remove('error'); byId('tasks-note').textContent = 'Задачи фиксируют рабочее действие. Статус «выполнена» не подтверждает финансовый результат.';
 }
 
 function openTaskForm(task = null, concert = null, draft = {}) {
@@ -436,11 +436,11 @@ async function updateConcertStatus(id, nextStatus) {
 async function loadOperations() {
   if (!state.session) {
     ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk', 'm-stale'].forEach(id => { byId(id).textContent = '—'; });
-    byId('dashboard-concerts').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб побачити операційні дані.</div>';
+    byId('dashboard-concerts').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть операционные данные.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть проверку данных.</div>';
-    byId('concerts-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр концертів.</div>';
+    byId('concerts-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы открыть реестр концертов.</div>';
     byId('dashboard-note').classList.remove('error');
-    byId('dashboard-note').textContent = 'Дані приховані політиками доступу. Порожня відповідь без авторизації не трактується як нуль.';
+    byId('dashboard-note').textContent = 'Данные скрыты правилами доступа. Пустой ответ без входа не трактуется как ноль.';
     state.concerts = [];
     state.totals = new Map();
     return;
@@ -462,9 +462,9 @@ async function loadOperations() {
   if (snapshotsResult.error) errors.push(`daily snapshots: ${snapshotsResult.error.message}`);
   if (documentsResult.error) errors.push(`documents: ${documentsResult.error.message}`);
   if (concertsResult.error) {
-    byId('dashboard-concerts').innerHTML = '<div class="empty">Немає доступу до реєстру концертів. Увійдіть у робочий акаунт.</div>';
+    byId('dashboard-concerts').innerHTML = '<div class="empty">Нет доступа к реестру концертов. Войдите в рабочий аккаунт.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Нет доступа к реестру концертов.</div>';
-    byId('concerts-list').innerHTML = '<div class="empty">Не вдалося завантажити концерти.</div>';
+    byId('concerts-list').innerHTML = '<div class="empty">Не удалось загрузить концерты.</div>';
   } else state.concerts = concertsResult.data || [];
   state.totals = new Map();
   const paidOrders = ordersResult.error ? [] : (ordersResult.data || []).filter(order => order.status === 'PAID');
