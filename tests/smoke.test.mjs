@@ -98,7 +98,7 @@ test('operator CSV import previews rows and excludes existing orders before inse
 });
 
 test('unauthenticated empty RLS results are not presented as zero', () => {
-  assert.match(js, /Порожня відповідь без авторизації не трактується як нуль/);
+  assert.match(js, /Пустой ответ без входа не трактуется как ноль/);
   assert.match(js, /if \(!state\.session\)/);
 });
 
