@@ -164,7 +164,9 @@ function renderConcerts() {
   byId('concerts-list').innerHTML = visible.map(concert => concertCard(concert)).join('') || '<div class="empty">По этому фильтру концертов нет.</div>';
 }
 
-function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailable = false) {
+function attentionTaskTitle(kind) { return { source: 'Привязать файл-источник', snapshot: 'Внести ежедневный срез продаж', edit: 'Указать вместимость площадки' }[kind]; }
+
+function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailable = false, openTaskKeys = new Set()) {
   const target = byId('dashboard-attention');
   if (unavailable) { target.innerHTML = '<div class="empty">Не удалось проверить полноту данных: значения не подменены нулями.</div>'; return; }
   const missingCapacity = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !Number(concert.capacity));
@@ -176,7 +178,7 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailabl
     ...sourceMissing.map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.', action: 'source', button: 'ДОБАВИТЬ ФАЙЛ' })),
     ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'edit', button: 'УКАЗАТЬ МЕСТА' }))
   ];
-  target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button><button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button></div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
+  target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button>${openTaskKeys.has(`${concert.id}:${attentionTaskTitle(action)}`) ? '' : `<button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button>`}</div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
@@ -443,13 +445,14 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
     db.from('daria_campaigns').select('concert_id,actual_spend'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
-    db.from('daria_documents').select('concert_id')
+    db.from('daria_documents').select('concert_id'),
+    db.from('daria_operational_tasks').select('concert_id,title,task_status')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
@@ -512,7 +515,8 @@ async function loadOperations() {
   const concertSources = new Set((documentsResult.data || []).map(document => document.concert_id).filter(Boolean));
   const sourceMissing = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !concertSources.has(concert.id));
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
-  renderDashboardAttention(staleSnapshots, sourceMissing, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error));
+  const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
+  renderDashboardAttention(staleSnapshots, sourceMissing, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys);
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
   note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: PAID orders, внесені витрати та campaigns.actual_spend. «Без свіжого зрізу» означає відсутність нового підтвердженого звіту для ${fmt(staleSnapshots.length)} активних концертів, а не відсутність продажів.`;
@@ -1371,9 +1375,8 @@ function bindEvents() {
     if (taskButton) {
       const concert = state.concerts.find(item => item.id === taskButton.dataset.id);
       const kind = taskButton.dataset.attentionTask;
-      const titles = { source: 'Привязать файл-источник', snapshot: 'Внести ежедневный срез продаж', edit: 'Указать вместимость площадки' };
       showView('tasks');
-      openTaskForm(null, concert, { title: titles[kind], details: `Создано из проверки полноты данных: ${kind === 'source' ? 'нет файла-источника' : kind === 'snapshot' ? 'нет свежего среза продаж' : 'не указана вместимость площадки'}.`, priority: 'HIGH', task_status: 'OPEN', due_date: new Date().toISOString().slice(0, 10) });
+      openTaskForm(null, concert, { title: attentionTaskTitle(kind), details: `Создано из проверки полноты данных: ${kind === 'source' ? 'нет файла-источника' : kind === 'snapshot' ? 'нет свежего среза продаж' : 'не указана вместимость площадки'}.`, priority: 'HIGH', task_status: 'OPEN', due_date: new Date().toISOString().slice(0, 10) });
       return;
     }
     const button = event.target.closest('[data-action]');
