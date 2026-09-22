@@ -176,7 +176,7 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailabl
     ...sourceMissing.map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.', action: 'source', button: 'ДОБАВИТЬ ФАЙЛ' })),
     ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'edit', button: 'УКАЗАТЬ МЕСТА' }))
   ];
-  target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
+  target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button><button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button></div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
@@ -395,14 +395,17 @@ async function loadTasksModule() {
   state.tasks = data || []; renderTasks(); byId('tasks-note').classList.remove('error'); byId('tasks-note').textContent = 'Задачі фіксують операційну дію. Статус DONE не підтверджує фінансовий результат.';
 }
 
-function openTaskForm(task = null, concert = null) {
+function openTaskForm(task = null, concert = null, draft = {}) {
   if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати задачі.')) return;
   const form = byId('task-form'); form.reset(); form.hidden = false; byId('task-form-note').textContent = '';
   byId('task-form-mode').textContent = task ? 'РЕДАГУВАННЯ ЗАДАЧІ' : 'НОВА ЗАДАЧА'; byId('task-form-title').textContent = task ? task.title : 'Додати задачу'; form.elements.id.value = task?.id || '';
   const options = state.concerts.map(item => `<option value="${esc(item.id)}">${esc(item.event_name)} · ${esc(item.city)}</option>`).join(''); setSelectOptions('task-concert', options, true, 'НЕ ПРИВ’ЯЗАНО');
   const fields = ['concert_id', 'title', 'details', 'task_status', 'priority', 'due_date'];
   if (task) fields.forEach(field => { form.elements[field].value = task[field] ?? ''; });
-  else if (concert) form.elements.concert_id.value = concert.id;
+  else {
+    if (concert) form.elements.concert_id.value = concert.id;
+    Object.entries(draft).forEach(([field, value]) => { if (form.elements[field]) form.elements[field].value = value; });
+  }
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -1364,6 +1367,15 @@ function bindEvents() {
     selectConcert(button.dataset.id);
   });
   byId('dashboard-attention').addEventListener('click', event => {
+    const taskButton = event.target.closest('[data-attention-task]');
+    if (taskButton) {
+      const concert = state.concerts.find(item => item.id === taskButton.dataset.id);
+      const kind = taskButton.dataset.attentionTask;
+      const titles = { source: 'Привязать файл-источник', snapshot: 'Внести ежедневный срез продаж', edit: 'Указать вместимость площадки' };
+      showView('tasks');
+      openTaskForm(null, concert, { title: titles[kind], details: `Создано из проверки полноты данных: ${kind === 'source' ? 'нет файла-источника' : kind === 'snapshot' ? 'нет свежего среза продаж' : 'не указана вместимость площадки'}.`, priority: 'HIGH', task_status: 'OPEN', due_date: new Date().toISOString().slice(0, 10) });
+      return;
+    }
     const button = event.target.closest('[data-action]');
     if (!button) return;
     const concert = state.concerts.find(item => item.id === button.dataset.id);
