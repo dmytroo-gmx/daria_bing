@@ -68,8 +68,10 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /Не привязан файл-источник по концерту/);
   assert.match(js, /ДОБАВИТЬ ФАЙЛ/);
   assert.match(js, /ДОБАВИТЬ СРЕЗ/);
+  assert.match(js, /УКАЗАТЬ МЕСТА/);
   assert.match(js, /button\.dataset\.action === 'source'/);
   assert.match(js, /button\.dataset\.action === 'snapshot'/);
+  assert.match(js, /button\.dataset\.action === 'edit'/);
   assert.match(js, /не відсутність продажів/);
 });
 

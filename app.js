@@ -174,7 +174,7 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailabl
       return { concert, text: 'Нет подтверждённого среза продаж за последние два дня.', action: hasSource ? 'snapshot' : 'source', button: hasSource ? 'ДОБАВИТЬ СРЕЗ' : 'ДОБАВИТЬ ФАЙЛ' };
     }),
     ...sourceMissing.map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.', action: 'source', button: 'ДОБАВИТЬ ФАЙЛ' })),
-    ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'details', button: 'ОТКРЫТЬ КОНЦЕРТ' }))
+    ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'edit', button: 'УКАЗАТЬ МЕСТА' }))
   ];
   target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
@@ -1369,6 +1369,7 @@ function bindEvents() {
     const concert = state.concerts.find(item => item.id === button.dataset.id);
     if (button.dataset.action === 'source') { showView('documents'); openDocumentForm(concert); return; }
     if (button.dataset.action === 'snapshot') { showView('concerts'); openSnapshotForm(concert); return; }
+    if (button.dataset.action === 'edit') { showView('concerts'); openConcertForm(concert); return; }
     showView('concerts');
     selectConcert(button.dataset.id);
   });
