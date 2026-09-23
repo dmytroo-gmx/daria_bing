@@ -20,6 +20,10 @@ test('static UI labels are localized for Russian operation', () => {
   assert.match(js, /'WEBSITE': 'САЙТ'/);
   assert.match(js, /'PDF REPORT': 'ОТЧЁТ В ДОКУМЕНТЕ'/);
   assert.match(js, /label\('status', status\)/);
+  assert.match(js, /documentStatus: \{ NEW: 'НОВОЕ — ТРЕБУЕТ ПРОВЕРКИ'/);
+  assert.match(js, /label\('expenseType', expense\.expense_type\)/);
+  assert.match(js, /label\('paymentStatus', expense\.payment_status\)/);
+  assert.match(js, /label\('negotiationStatus', value\)/);
   assert.match(html, /placeholder="реклама, площадка, артисты…"/);
 });
 
