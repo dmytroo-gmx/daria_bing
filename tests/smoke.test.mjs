@@ -280,7 +280,17 @@ test('server-side metrics and audit logging are present in the additive migratio
 test('concert history shows the recorded audit actor', () => {
   assert.match(js, /const auditActorLabel/);
   assert.match(js, /entity_id,user_id,created_at/);
+  assert.match(js, /daria_user_profiles/);
+  assert.match(js, /auditError: auditResult\.error/);
   assert.match(js, /Полный идентификатор автора/);
+});
+
+test('audit profiles are role-protected and preserve existing audit entries', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0012_audit_actor_profiles.sql', import.meta.url), 'utf8');
+  assert.match(migration, /create table if not exists public\.daria_user_profiles/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /daria_profiles_read/);
+  assert.match(migration, /on conflict \(user_id\) do nothing/);
 });
 
 test('the current server metric subtracts campaign spend from the operational result', async () => {
