@@ -11,6 +11,7 @@ const [html, js, css] = await Promise.all([
 test('the product is branded Legacy Brain', () => {
   assert.match(html, /<title>Legacy Brain/);
   assert.match(html, />Legacy Brain</);
+  assert.doesNotMatch(html, /Legacy Imperial Concerts/);
   assert.doesNotMatch(html, /DARIA BING/i);
 });
 
