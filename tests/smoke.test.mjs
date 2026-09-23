@@ -19,6 +19,8 @@ test('static UI labels are localized for Russian operation', () => {
   assert.match(js, /function localizeStaticInterface/);
   assert.match(js, /'WEBSITE': 'САЙТ'/);
   assert.match(js, /'PDF REPORT': 'ОТЧЁТ В ДОКУМЕНТЕ'/);
+  assert.match(js, /label\('status', status\)/);
+  assert.match(html, /placeholder="реклама, площадка, артисты…"/);
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
