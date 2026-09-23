@@ -77,6 +77,7 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /button\.dataset\.action === 'snapshot'/);
   assert.match(js, /button\.dataset\.action === 'edit'/);
   assert.match(js, /не відсутність продажів/);
+  for (const action of ['concert', 'expense', 'campaign', 'sale', 'tracking', 'import']) assert.match(html, new RegExp(`data-quick="${action}"`));
 });
 
 test('sales keeps payment state and attribution evidence distinct', () => {

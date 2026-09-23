@@ -1343,9 +1343,13 @@ function bindEvents() {
   byId('dashboard-period').addEventListener('change', () => { if (state.concerts.length) renderConcerts(); });
   document.querySelectorAll('[data-quick]').forEach(button => button.addEventListener('click', async () => {
     const target = button.dataset.quick;
-    showView(target === 'expense' ? 'finance' : 'channels');
+    showView(target === 'concert' ? 'concerts' : target === 'expense' ? 'finance' : target === 'sale' || target === 'import' ? 'sales' : 'channels');
+    if (target === 'concert') { openConcertForm(); return; }
     if (target === 'expense') { await loadFinance(); openExpenseForm(); }
     if (target === 'campaign') { await loadChannelsModule(); openCampaignForm(); }
+    if (target === 'sale') { await loadSalesModule(); openOrderForm(); }
+    if (target === 'tracking') { await loadChannelsModule(); openTrackingForm(); }
+    if (target === 'import') { await Promise.all([loadOperations(), loadOperatorsModule()]); openOrderImport(); }
   }));
   byId('send-login').addEventListener('click', sendMagicLink);
   byId('add-concert').addEventListener('click', () => openConcertForm());
