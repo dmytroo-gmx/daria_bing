@@ -222,6 +222,14 @@ test('operators preserve contract capabilities and unknown fields', () => {
   assert.match(js, /НЕ ЗАФИКСИРОВАНО/);
 });
 
+test('verified starter records do not invent sales or overwrite entered operator facts', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0013_seed_verified_starter_records.sql', import.meta.url), 'utf8');
+  for (const name of ['Wrocław', 'Bydgoszcz', 'Biletyna', 'Eventim', 'KupBilecik', 'Bilety24']) assert.match(migration, new RegExp(`'${name}'`));
+  assert.match(migration, /on conflict \(name\) do update set/);
+  assert.match(migration, /coalesce\(public\.daria_ticketing_operators\.marketplace_commission/);
+  assert.doesNotMatch(migration, /gross_revenue|actual_spend|ticket_count/);
+});
+
 test('reports label platform and confirmed attribution separately', () => {
   assert.match(html, /id="report-list"/);
   assert.match(js, /СТОИМОСТЬ ЗАКАЗА ПО ПЛАТФОРМЕ/);
