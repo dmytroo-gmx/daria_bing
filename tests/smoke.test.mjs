@@ -137,8 +137,10 @@ test('finance keeps expense classes and currencies separate', () => {
   assert.match(html, /OPTIONAL_FUTURE/);
   assert.match(html, /REFUNDABLE_DEPOSIT/);
   assert.match(html, /name="include_in_projected_cost"/);
+  assert.match(html, /id="f-optional-note"/);
   assert.match(js, /selectedOptional/);
   assert.match(js, /НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН/);
+  assert.match(js, /ВКЛЮЧЕНО В ПЛАН/);
   assert.match(js, /function currencyTotals/);
   assert.match(js, /daria_expenses'\)\.select\('\*'\)/);
   assert.match(js, /payment_status === 'PAID'/);
