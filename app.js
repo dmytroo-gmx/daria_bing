@@ -169,12 +169,14 @@ function riskClass(risk) { return `risk-${String(risk || 'GRAY').toLowerCase()}`
 
 function concertCard(concert, compact = false) {
   const total = state.totals.get(concert.id) || { tickets: 0, revenue: 0 };
-  const finance = state.concertFinance.get(concert.id) || { marketing: new Map(), mandatory: new Map(), nextMandatory: null };
+  const finance = state.concertFinance.get(concert.id) || { marketing: new Map(), mandatory: new Map(), alreadySpent: new Map(), nextMandatory: null };
   const capacity = Number(concert.capacity) || 0, occupancy = capacity ? `${Math.round(total.tickets / capacity * 100)}%` : '—';
-  const breakEven = concert.break_even_tickets == null ? '—' : fmt(Math.max(0, Number(concert.break_even_tickets) - total.tickets));
+  const currency = concert.currency || 'PLN';
+  const breakEvenTicketsValue = breakEvenTickets(concert, (finance.marketing.get(currency) || 0) + (finance.mandatory.get(currency) || 0) + (finance.alreadySpent.get(currency) || 0));
+  const breakEven = breakEvenTicketsValue == null ? '—' : fmt(Math.max(0, breakEvenTicketsValue - total.tickets));
   const nextMandatory = finance.nextMandatory ? `${money(finance.nextMandatory.amount, finance.nextMandatory.currency)}${finance.nextMandatory.due_date ? ` · до ${dateLabel(finance.nextMandatory.due_date)}` : ''}` : '—';
   return `<article class="ops-concert ${state.selectedConcertId === concert.id ? 'selected' : ''}" data-concert-id="${esc(concert.id)}">
-    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} из ${capacity ? fmt(capacity) : '—'} билетов · заполнение ${occupancy} · выручка ${money(total.revenue, concert.currency || 'PLN')}</small><div class="concert-facts"><span>РАСХОДЫ НА КАМПАНИИ: ${formatCurrencyMap(finance.marketing)}</span><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ: ${formatCurrencyMap(finance.mandatory)}</span><span>БЛИЖАЙШИЙ ПЛАТЁЖ: ${nextMandatory}</span>${concert.break_even_tickets == null ? '' : `<span>ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ: ${breakEven} билетов</span>`}</div></div>
+    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} из ${capacity ? fmt(capacity) : '—'} билетов · заполнение ${occupancy} · выручка ${money(total.revenue, currency)}</small><div class="concert-facts"><span>РАСХОДЫ НА КАМПАНИИ: ${formatCurrencyMap(finance.marketing)}</span><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ: ${formatCurrencyMap(finance.mandatory)}</span><span>БЛИЖАЙШИЙ ПЛАТЁЖ: ${nextMandatory}</span>${breakEvenTicketsValue == null ? '' : `<span>ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ: ${breakEven} билетов</span>`}</div></div>
     <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(label('risk', concert.risk_status || 'GRAY'))}</span>${compact ? `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ОТКРЫТЬ</button>` : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛИ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">ИЗМЕНИТЬ</button>`}</div>
   </article>`;
 }
@@ -509,7 +511,7 @@ async function loadOperations() {
     total.revenue += Number(order.gross_revenue) || 0;
     state.totals.set(order.concert_id, total);
   });
-  state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), nextMandatory: null }]));
+  state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), alreadySpent: new Map(), nextMandatory: null }]));
   (campaignsResult.data || []).forEach(campaign => {
     const finance = state.concertFinance.get(campaign.concert_id); if (!finance) return;
     const currency = state.concerts.find(concert => concert.id === campaign.concert_id)?.currency || 'PLN';
@@ -520,6 +522,11 @@ async function loadOperations() {
     const currency = expense.currency || 'PLN';
     finance.mandatory.set(currency, (finance.mandatory.get(currency) || 0) + (Number(expense.amount) || 0));
     if (!finance.nextMandatory || (expense.due_date && (!finance.nextMandatory.due_date || expense.due_date < finance.nextMandatory.due_date))) finance.nextMandatory = expense;
+  });
+  (expensesResult.data || []).filter(expense => expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID').forEach(expense => {
+    const finance = state.concertFinance.get(expense.concert_id); if (!finance) return;
+    const currency = expense.currency || 'PLN';
+    finance.alreadySpent.set(currency, (finance.alreadySpent.get(currency) || 0) + (Number(expense.amount) || 0));
   });
   byId('m-active').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status)).length;
   byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(paidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
