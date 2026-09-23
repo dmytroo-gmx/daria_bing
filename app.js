@@ -1599,6 +1599,9 @@ async function init() {
     calculateBooking();
     setStatus('Старая сводка обновлена командой.');
   }).subscribe();
+  db.channel('legacy-confirmed-orders-live').on('postgres_changes', { event: '*', schema: 'public', table: 'daria_orders' }, () => {
+    if (document.querySelector('[data-panel="booking"]').classList.contains('active')) loadBookingComparison();
+  }).subscribe();
   await Promise.all([loadOperations(), loadBooking()]);
 }
 
