@@ -235,6 +235,8 @@ test('operators preserve contract capabilities and unknown fields', () => {
   assert.match(js, /Серверная передача/);
   assert.match(js, /Доступ к электронной почте/);
   assert.match(js, /НЕ ЗАФИКСИРОВАНО/);
+  assert.match(js, /operatorRecommendation: \{ RECOMMENDED: 'РЕКОМЕНДОВАН'/);
+  assert.match(js, /known\(operator\.legacy_recommendation, value => label\('operatorRecommendation', value\)\)/);
 });
 
 test('verified starter records do not invent sales or overwrite entered operator facts', async () => {
