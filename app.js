@@ -1266,6 +1266,10 @@ async function loadReportsModule() {
   const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [];
   populateReportFilters(concerts, metrics);
   const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, channelId = byId('report-channel-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
+  const selectedConcert = concerts.find(concert => concert.id === concertId);
+  const selectedChannel = metrics.find(metric => metric.channel_id === channelId);
+  const reportScope = [selectedConcert?.event_name || (concertId === 'ALL' ? 'все концерты' : 'выбранный концерт'), city === 'ALL' ? '' : `город: ${city}`, selectedChannel?.channel_name || (channelId === 'ALL' ? '' : 'выбранный канал'), dateFrom ? `с ${dateLabel(dateFrom)}` : '', dateTo ? `по ${dateLabel(dateTo)}` : ''].filter(Boolean).join(' · ');
+  byId('report-print-context').textContent = `Сформировано ${new Date().toLocaleString('ru-RU')} · ${reportScope}`;
   const visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city) && (!dateFrom || concert.event_date >= dateFrom) && (!dateTo || concert.event_date <= dateTo));
   const concertIds = new Set(visibleConcerts.map(concert => concert.id));
   const paid = orders.filter(order => order.status === 'PAID' && concertIds.has(order.concert_id));
@@ -1608,6 +1612,7 @@ function bindEvents() {
   byId('report-channel-filter').addEventListener('change', loadReportsModule);
   byId('report-date-from').addEventListener('change', loadReportsModule);
   byId('report-date-to').addEventListener('change', loadReportsModule);
+  byId('print-report').addEventListener('click', () => window.print());
   byId('expense-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-expense]');
     if (!button) return;

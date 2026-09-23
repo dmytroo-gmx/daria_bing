@@ -243,6 +243,14 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /Подтверждённые показатели основаны только на оплаченных заказах/);
 });
 
+test('reports can be saved through the browser PDF workflow', () => {
+  assert.match(html, /id="print-report"/);
+  assert.match(html, /id="report-print-context"/);
+  assert.match(css, /@media print/);
+  assert.match(js, /report-print-context/);
+  assert.match(js, /print-report.*window\.print/);
+});
+
 test('report channel filter scopes headline metrics and concert cards consistently', () => {
   assert.match(html, /id="r-paid-tickets-note"/);
   assert.match(html, /id="r-unattributed-note"/);
