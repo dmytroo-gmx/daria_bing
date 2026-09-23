@@ -670,8 +670,11 @@ function renderSales() {
     return `<article class="expense-row"><div><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'Концерт не найден')}</small><h3>${esc(order.external_order_id)}</h3><small>${esc(operator?.name || 'оператор не указан')} · ${esc(label('attribution', order.attribution_type))}${order.source_code ? ` · ${esc(order.source_code)}` : ''}</small></div><strong class="expense-amount">${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)}</strong><div class="expense-meta"><span class="expense-status ${order.status === 'PAID' ? 'paid' : ''}">${esc(label('orderStatus', order.status))}</span><span>${order.order_date ? esc(new Date(order.order_date).toLocaleString('ru-RU')) : 'время не указано'}</span></div><button class="text-button" type="button" data-edit-order="${esc(order.id)}">ИЗМЕНИТЬ</button></article>`;
   }).join('') || '<div class="empty">За цим фільтром замовлень немає.</div>';
   const paid = state.orders.filter(order => order.status === 'PAID');
-  byId('s-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  byId('s-paid-gross').textContent = currencyTotals(paid, 'gross_revenue');
+  const fallbackOperatorReports = latestFallbackOperatorReports(state.campaigns, paid, state.campaignConfirmedReports);
+  byId('s-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
+  const paidRevenue = amountMap(paid, 'gross_revenue');
+  fallbackOperatorReports.forEach(report => paidRevenue.set(report.currency || 'PLN', (paidRevenue.get(report.currency || 'PLN') || 0) + (Number(report.confirmed_revenue) || 0)));
+  byId('s-paid-gross').textContent = formatCurrencyMap(paidRevenue);
   byId('s-refunded').textContent = fmt(state.orders.filter(order => order.status === 'REFUNDED').reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
   byId('s-unknown').textContent = state.orders.filter(order => order.attribution_type === 'UNKNOWN').length;
 }
@@ -685,10 +688,11 @@ async function loadSalesModule() {
     return;
   }
   if (!state.concerts.length) await loadOperations();
-  const [ordersResult, operatorsResult, campaignsResult] = await Promise.all([
+  const [ordersResult, operatorsResult, campaignsResult, reportsResult] = await Promise.all([
     db.from('daria_orders').select('*').order('order_date', { ascending: false, nullsFirst: false }),
     db.from('daria_ticketing_operators').select('id,name').order('name'),
-    db.from('daria_campaigns').select('id,campaign_name,source_code,concert_id').order('start_date', { ascending: false, nullsFirst: false })
+    db.from('daria_campaigns').select('id,campaign_name,source_code,concert_id').order('start_date', { ascending: false, nullsFirst: false }),
+    db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_tickets,confirmed_revenue,currency,created_at').order('reported_on', { ascending: false })
   ]);
   const errors = [ordersResult.error && `orders: ${ordersResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`].filter(Boolean);
   if (errors.length) {
@@ -699,10 +703,13 @@ async function loadSalesModule() {
   state.orders = ordersResult.data || [];
   state.operators = operatorsResult.data || [];
   state.campaigns = campaignsResult.data || [];
+  state.campaignConfirmedReports = reportsResult.error ? [] : reportsResult.data || [];
   populateOrderOptions();
   renderSales();
   byId('sales-note').classList.remove('error');
-  byId('sales-note').textContent = 'PAID входять у продажі. REFUNDED і CANCELLED не додаються. Attribution type показує рівень доказовості джерела.';
+  byId('sales-note').textContent = reportsResult.error
+    ? 'Оплаченные заказы показаны отдельно. Итоги операторов станут доступны после применения следующей миграции базы.'
+    : 'Оплаченные заказы и последние подтверждённые итоги операторов без номеров заказов входят в продажи один раз. Возвраты и отмены не добавляются. Статус источника показывает уровень доказательности.';
 }
 
 function localDateTime(value) {

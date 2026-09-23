@@ -114,7 +114,8 @@ test('sales keeps payment state and attribution evidence distinct', () => {
   assert.match(html, /id="campaign-result-form"/);
   assert.match(js, /async function saveCampaignResult/);
   assert.match(html, /Подтверждённые заказы, билеты и выручка вносятся отдельными заказами/);
-  assert.match(js, /currencyTotals\(paid, 'gross_revenue'\)/);
+  assert.match(js, /const paidRevenue = amountMap\(paid, 'gross_revenue'\)/);
+  assert.match(js, /byId\('s-paid-gross'\)\.textContent = formatCurrencyMap\(paidRevenue\)/);
   assert.match(js, /daria_orders'\)\.select\('\*'\)/);
 });
 
@@ -319,6 +320,8 @@ test('operator report totals stay source-backed and do not duplicate paid orders
   assert.match(reportMigration, /not exists \(select 1 from public\.daria_orders order_row where order_row\.campaign_id = campaign\.id and order_row\.status = 'PAID'\)/);
   assert.match(reportMigration, /create or replace function public\.daria_concert_metrics/);
   assert.match(reportMigration, /create or replace function public\.daria_channel_metrics/);
+  assert.match(js, /const fallbackOperatorReports = latestFallbackOperatorReports\(state\.campaigns, paid, state\.campaignConfirmedReports\)/);
+  assert.match(js, /Оплаченные заказы и последние подтверждённые итоги операторов без номеров заказов входят в продажи один раз/);
 });
 
 test('an authenticated user must have a verified manager role before editing', () => {
