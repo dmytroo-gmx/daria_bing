@@ -3,8 +3,8 @@ const SUPABASE_KEY = 'sb_publishable_MeIQ3HFdObe1CyUebdwt8Q_qAA4s3S6';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const bookingConcerts = [
-  { id: 'wroclaw', date: '29.09.2026', city: 'Вроцлав', title: 'Vivaldi vs. Piazzolla', venue: 'Radio Wrocław', capacity: 500, breakEven: 249 },
-  { id: 'kielce', date: '04.10.2026', city: 'Кельце', title: 'Vintage Rock Legends', venue: 'Filharmonia Świętokrzyska', capacity: 506, breakEven: 286 }
+  { id: 'wroclaw', date: '29.09.2026', eventDate: '2026-09-29', city: 'Вроцлав', title: 'Vivaldi vs. Piazzolla', venue: 'Radio Wrocław', capacity: 500, breakEven: 249 },
+  { id: 'kielce', date: '04.10.2026', eventDate: '2026-10-04', city: 'Кельце', title: 'Vintage Rock Legends', venue: 'Filharmonia Świętokrzyska', capacity: 506, breakEven: 286 }
 ];
 const bookingOperators = [
   ['kupbilecik', 'KupBilecik', 'основні продажі'],
@@ -1376,7 +1376,32 @@ async function loadBooking() {
   if (error) { setStatus(`Старая сводка не загружена: ${error.message}`, true); return; }
   bookingConcerts.forEach(concert => bookingOperators.forEach(([operator]) => { byId(`${concert.id}-${operator}`).value = data[`${concert.id}_${operator}`] ?? ''; }));
   calculateBooking();
+  loadBookingComparison();
   setStatus('Старая сводка синхронизирована с общей базой.');
+}
+
+async function loadBookingComparison() {
+  const target = byId('booking-comparison');
+  if (!state.session) { target.innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы сверить старую сводку с подтверждёнными заказами.</div>'; return; }
+  const [concertsResult, operatorsResult, ordersResult] = await Promise.all([
+    db.from('daria_concerts').select('id,event_date,city'),
+    db.from('daria_ticketing_operators').select('id,name'),
+    db.from('daria_orders').select('concert_id,operator_id,ticket_count,status')
+  ]);
+  const errors = [concertsResult.error, operatorsResult.error, ordersResult.error].filter(Boolean);
+  if (errors.length) { target.innerHTML = '<div class="empty">Не удалось сверить старую сводку: данные не подменены нулями.</div>'; return; }
+  const concerts = concertsResult.data || [], operators = operatorsResult.data || [], orders = ordersResult.data || [];
+  const rows = bookingConcerts.flatMap(legacyConcert => {
+    const concert = concerts.find(item => item.event_date === legacyConcert.eventDate && item.city === legacyConcert.city);
+    return bookingOperators.map(([legacyId, operatorName]) => {
+      const oldTickets = bookingValue(`${legacyConcert.id}-${legacyId}`);
+      const operator = operators.find(item => item.name.trim().toLowerCase() === operatorName.toLowerCase());
+      const confirmed = concert && operator ? orders.filter(order => order.status === 'PAID' && order.concert_id === concert.id && order.operator_id === operator.id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) : null;
+      const difference = confirmed == null ? '—' : fmt(oldTickets - confirmed);
+      return `<tr><td>${esc(legacyConcert.city)} · ${esc(legacyConcert.date)}</td><td>${esc(operatorName)}</td><td>${fmt(oldTickets)}</td><td>${confirmed == null ? '—' : fmt(confirmed)}</td><td>${difference}</td></tr>`;
+    });
+  });
+  target.innerHTML = reportTable(['КОНЦЕРТ', 'ОПЕРАТОР', 'СТАРАЯ СВОДКА', 'ПОДТВЕРЖДЁННЫЕ БИЛЕТЫ', 'РАЗНИЦА'], rows, 'Нет строк для сверки.');
 }
 
 async function saveBooking() {

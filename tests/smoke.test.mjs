@@ -294,7 +294,9 @@ test('legacy booking remains available but is explicitly separated from confirme
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);
   assert.match(html, /id="open-confirmed-sales"/);
+  assert.match(html, /id="booking-comparison"/);
   assert.match(html, /не являются подтверждёнными продажами/);
   assert.match(js, /open-confirmed-sales'\)\.addEventListener/);
+  assert.match(js, /async function loadBookingComparison/);
   assert.match(css, /@media\(max-width:820px\)/);
 });
