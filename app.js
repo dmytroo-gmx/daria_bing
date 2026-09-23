@@ -1199,7 +1199,7 @@ async function loadReportsModule() {
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,currency,status'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status'),
-    db.from('daria_campaigns').select('concert_id,actual_spend,platform_reported_orders,platform_reported_value'),
+    db.from('daria_campaigns').select('id,concert_id,channel_id,actual_spend,platform_reported_orders,platform_reported_value'),
     db.rpc('daria_channel_metrics'),
     db.from('daria_ticketing_operators').select('id,name').order('name')
   ]);
@@ -1211,12 +1211,18 @@ async function loadReportsModule() {
   const visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city) && (!dateFrom || concert.event_date >= dateFrom) && (!dateTo || concert.event_date <= dateTo));
   const concertIds = new Set(visibleConcerts.map(concert => concert.id));
   const paid = orders.filter(order => order.status === 'PAID' && concertIds.has(order.concert_id));
-  const visibleCampaigns = campaigns.filter(campaign => concertIds.has(campaign.concert_id));
+  const visibleCampaigns = campaigns.filter(campaign => concertIds.has(campaign.concert_id) && (channelId === 'ALL' || campaign.channel_id === channelId));
+  const visibleCampaignIds = new Set(visibleCampaigns.map(campaign => campaign.id));
+  const visiblePaid = channelId === 'ALL' ? paid : paid.filter(order => visibleCampaignIds.has(order.campaign_id));
+  const visibleMetrics = metrics.filter(metric => concertIds.has(metric.concert_id) && (channelId === 'ALL' || metric.channel_id === channelId));
   byId('r-concerts').textContent = visibleConcerts.length;
-  byId('r-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
+  byId('r-paid-tickets').textContent = fmt(visiblePaid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
   byId('r-spend').textContent = money(visibleCampaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
-  byId('r-unattributed').textContent = fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, orders.filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), campaigns.filter(campaign => campaign.concert_id === concert.id))).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
+  byId('r-paid-tickets-note').textContent = channelId === 'ALL' ? 'подтверждённые заказы' : 'подтверждённые заказы выбранного канала';
+  byId('r-spend-note').textContent = channelId === 'ALL' ? 'внесённые расходы кампаний' : 'расходы кампаний выбранного канала';
+  byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0)) : '—';
+  byId('r-unattributed-note').textContent = channelId === 'ALL' ? 'без привязки к кампании' : 'не относится к выбранному каналу';
+  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id))).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
   renderChannelReport(metrics, concerts, concertIds, channelId);
   renderOperatorReport(orders, operators, concerts, concertIds);
   byId('reports-note').classList.remove('error');

@@ -236,6 +236,14 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /Подтверждённые показатели основаны только на оплаченных заказах/);
 });
 
+test('report channel filter scopes headline metrics and concert cards consistently', () => {
+  assert.match(html, /id="r-paid-tickets-note"/);
+  assert.match(html, /id="r-unattributed-note"/);
+  assert.match(js, /const visibleCampaignIds = new Set\(visibleCampaigns\.map\(campaign => campaign\.id\)\)/);
+  assert.match(js, /const visiblePaid = channelId === 'ALL' \? paid : paid\.filter\(order => visibleCampaignIds\.has\(order\.campaign_id\)\)/);
+  assert.match(js, /не относится к выбранному каналу/);
+});
+
 test('an authenticated user must have a verified manager role before editing', () => {
   assert.match(js, /daria_user_roles'\)\.select\('role'\)/);
   assert.match(js, /\['ADMIN', 'MANAGER'\]\.includes\(state\.role\)/);
