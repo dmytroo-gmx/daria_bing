@@ -94,7 +94,7 @@ test('sales keeps payment state and attribution evidence distinct', () => {
   assert.match(js, /order\.status === 'REFUNDED'/);
   assert.match(html, /id="campaign-result-form"/);
   assert.match(js, /async function saveCampaignResult/);
-  assert.match(js, /Подтверждённые заказы, билеты и выручка вносятся отдельными заказами/);
+  assert.match(html, /Подтверждённые заказы, билеты и выручка вносятся отдельными заказами/);
   assert.match(js, /currencyTotals\(paid, 'gross_revenue'\)/);
   assert.match(js, /daria_orders'\)\.select\('\*'\)/);
 });
