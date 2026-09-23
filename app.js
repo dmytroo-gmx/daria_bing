@@ -221,6 +221,33 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unknownOrd
   target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button>${action === 'unknown' || openTaskKeys.has(`${concert.id}:${attentionTaskTitle(action)}`) ? '' : `<button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button>`}</div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
 
+function renderDashboardChannelAnswer(metrics, concerts, unavailable = false) {
+  const target = byId('dashboard-channel-answer');
+  if (unavailable) { target.innerHTML = '<div class="empty">Показатели каналов сейчас недоступны; данные не подменены нулями.</div>'; return; }
+  const concertById = new Map(concerts.map(concert => [concert.id, concert]));
+  const byCurrency = new Map();
+  metrics.forEach(metric => {
+    const concert = concertById.get(metric.concert_id); if (!concert) return;
+    const currency = concert.currency || 'PLN';
+    const key = `${metric.channel_id}:${currency}`;
+    const row = byCurrency.get(key) || { currency, name: metric.channel_name || 'Канал не указан', tickets: 0, orders: 0, spend: 0, revenue: 0 };
+    row.tickets += Number(metric.confirmed_paid_tickets) || 0;
+    row.orders += Number(metric.confirmed_paid_orders) || 0;
+    row.spend += Number(metric.actual_spend) || 0;
+    row.revenue += Number(metric.confirmed_gross_revenue) || 0;
+    byCurrency.set(key, row);
+  });
+  const rows = [...byCurrency.values()].filter(row => row.tickets > 0);
+  if (!rows.length) { target.innerHTML = '<div class="truth-note">Нет подтверждённых продаж по каналам в выбранном периоде. Продажи, указанные рекламной платформой, здесь намеренно не используются.</div>'; return; }
+  const currencies = [...new Set(rows.map(row => row.currency))];
+  target.innerHTML = currencies.map(currency => {
+    const scope = rows.filter(row => row.currency === currency);
+    const mostTickets = [...scope].sort((left, right) => right.tickets - left.tickets || right.revenue - left.revenue)[0];
+    const bestCpa = [...scope].filter(row => row.spend > 0).sort((left, right) => left.spend / left.tickets - right.spend / right.tickets)[0];
+    return `<article class="attention-item"><div><b>БОЛЬШЕ ВСЕГО БИЛЕТОВ · ${esc(currency)}</b><span>${esc(mostTickets.name)} · ${fmt(mostTickets.tickets)} билетов · ${fmt(mostTickets.orders)} заказов · ${money(mostTickets.revenue, currency)}</span></div><div>${bestCpa ? `<b>НИЖЕ ВСЕГО СТОИМОСТЬ БИЛЕТА</b><span>${esc(bestCpa.name)} · ${money(bestCpa.spend / bestCpa.tickets, currency)}</span>` : '<span>Нет расходов, с которыми можно сопоставить стоимость билета.</span>'}</div></article>`;
+  }).join('');
+}
+
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
 
 function snapshotChanges(snapshots) {
@@ -488,6 +515,7 @@ async function loadOperations() {
     ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk', 'm-stale'].forEach(id => { byId(id).textContent = '—'; });
     byId('dashboard-concerts').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть операционные данные.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть проверку данных.</div>';
+    byId('dashboard-channel-answer').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть подтверждённые показатели каналов.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы открыть реестр концертов.</div>';
     byId('dashboard-note').classList.remove('error');
     byId('dashboard-note').textContent = 'Данные скрыты правилами доступа. Пустой ответ без входа не трактуется как ноль.';
@@ -495,7 +523,7 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, channelMetricsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('id,concert_id,actual_spend'),
@@ -503,7 +531,8 @@ async function loadOperations() {
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
     db.from('daria_source_documents').select('concert_id'),
     db.from('daria_operational_tasks').select('concert_id,title,task_status'),
-    db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at')
+    db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
+    db.rpc('daria_channel_metrics')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
@@ -592,6 +621,7 @@ async function loadOperations() {
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
   const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
   renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys, dashboardConcerts);
+  renderDashboardChannelAnswer(channelMetricsResult.data || [], dashboardConcerts, Boolean(channelMetricsResult.error));
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
   note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : reportsResult.error ? `Итоги операторов станут доступны после применения следующей миграции базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;

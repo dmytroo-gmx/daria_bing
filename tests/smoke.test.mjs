@@ -79,9 +79,13 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
   assert.match(html, /id="m-stale"/);
   assert.match(html, /id="dashboard-attention"/);
+  assert.match(html, /id="dashboard-channel-answer"/);
   assert.match(js, /daria_source_documents'\)\.select\('concert_id'\)/);
   assert.match(js, /daily snapshots/);
   assert.match(js, /function renderDashboardAttention/);
+  assert.match(js, /function renderDashboardChannelAnswer/);
+  assert.match(js, /БОЛЬШЕ ВСЕГО БИЛЕТОВ/);
+  assert.match(js, /НИЖЕ ВСЕГО СТОИМОСТЬ БИЛЕТА/);
   assert.match(js, /function attentionTaskTitle/);
   assert.match(js, /daria_operational_tasks'\)\.select\('concert_id,title,task_status'\)/);
   assert.match(js, /Не привязан файл-источник по концерту/);
