@@ -276,6 +276,12 @@ test('server-side metrics and audit logging are present in the additive migratio
   assert.match(migration, /daria_audit_campaigns/);
 });
 
+test('the current server metric subtracts campaign spend from the operational result', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0011_include_marketing_in_operational_result.sql', import.meta.url), 'utf8');
+  assert.match(migration, /create or replace function public\.daria_concert_metrics/);
+  assert.match(migration, /- coalesce\(campaigns\.marketing_spend, 0\)/);
+});
+
 test('campaign platform delivery metrics have an additive migration', async () => {
   const migration = await readFile(new URL('../supabase/migrations/0009_campaign_platform_reach_metrics.sql', import.meta.url), 'utf8');
   for (const column of ['platform_impressions', 'platform_reach', 'platform_link_clicks', 'platform_landing_page_views']) assert.match(migration, new RegExp(`add column if not exists ${column}`));
