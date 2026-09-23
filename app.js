@@ -183,15 +183,20 @@ function concertCard(concert, compact = false) {
   </article>`;
 }
 
-function renderConcerts() {
-  const period = byId('dashboard-period')?.value || 'ALL';
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const end = new Date(now); if (period === 'MONTH') end.setMonth(end.getMonth() + 1); else if (period !== 'ALL') end.setDate(end.getDate() + Number(period));
-  const dashboardConcerts = state.concerts.filter(concert => {
+function dashboardPeriodConcerts(concerts, period = byId('dashboard-period')?.value || 'ALL') {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return concerts.filter(concert => {
     if (!['ON_SALE', 'ACTIVE'].includes(concert.status)) return false;
     if (period === 'ALL' || !concert.event_date) return true;
-    const date = new Date(`${concert.event_date}T12:00:00`); return date >= now && date <= end;
+    const eventDate = new Date(`${concert.event_date}T12:00:00`);
+    if (period === 'MONTH') return eventDate.getFullYear() === today.getFullYear() && eventDate.getMonth() === today.getMonth();
+    const end = new Date(today); end.setDate(end.getDate() + Number(period));
+    return eventDate >= today && eventDate <= end;
   });
+}
+
+function renderConcerts() {
+  const dashboardConcerts = dashboardPeriodConcerts(state.concerts);
   byId('dashboard-concerts').innerHTML = dashboardConcerts.map(concert => concertCard(concert, true)).join('') || '<div class="empty">В выбранном периоде активных концертов нет.</div>';
   const filter = byId('concert-filter').value;
   const visible = filter === 'ALL' ? state.concerts : state.concerts.filter(concert => concert.status === filter);
@@ -200,17 +205,17 @@ function renderConcerts() {
 
 function attentionTaskTitle(kind) { return { source: 'Привязать файл-источник', snapshot: 'Внести ежедневный срез продаж', edit: 'Указать вместимость площадки' }[kind]; }
 
-function renderDashboardAttention(staleSnapshots, sourceMissing = [], unknownOrders = new Map(), unavailable = false, openTaskKeys = new Set()) {
+function renderDashboardAttention(staleSnapshots, sourceMissing = [], unknownOrders = new Map(), unavailable = false, openTaskKeys = new Set(), concerts = state.concerts) {
   const target = byId('dashboard-attention');
   if (unavailable) { target.innerHTML = '<div class="empty">Не удалось проверить полноту данных: значения не подменены нулями.</div>'; return; }
-  const missingCapacity = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !Number(concert.capacity));
+  const missingCapacity = concerts.filter(concert => !Number(concert.capacity));
   const items = [
     ...staleSnapshots.map(concert => {
       const hasSource = !sourceMissing.some(item => item.id === concert.id);
       return { concert, text: 'Нет подтверждённого среза продаж за последние два дня.', action: hasSource ? 'snapshot' : 'source', button: hasSource ? 'ДОБАВИТЬ СРЕЗ' : 'ДОБАВИТЬ ФАЙЛ' };
     }),
     ...sourceMissing.map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.', action: 'source', button: 'ДОБАВИТЬ ФАЙЛ' })),
-    ...state.concerts.filter(concert => unknownOrders.has(concert.id)).map(concert => ({ concert, text: `${fmt(unknownOrders.get(concert.id))} заказов без установленного источника.`, action: 'unknown', button: 'ОТКРЫТЬ ЗАКАЗЫ' })),
+    ...concerts.filter(concert => unknownOrders.has(concert.id)).map(concert => ({ concert, text: `${fmt(unknownOrders.get(concert.id))} заказов без установленного источника.`, action: 'unknown', button: 'ОТКРЫТЬ ЗАКАЗЫ' })),
     ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'edit', button: 'УКАЗАТЬ МЕСТА' }))
   ];
   target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button>${action === 'unknown' || openTaskKeys.has(`${concert.id}:${attentionTaskTitle(action)}`) ? '' : `<button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button>`}</div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
@@ -511,6 +516,9 @@ async function loadOperations() {
   } else state.concerts = concertsResult.data || [];
   state.totals = new Map();
   const paidOrders = ordersResult.error ? [] : (ordersResult.data || []).filter(order => order.status === 'PAID');
+  const dashboardConcerts = dashboardPeriodConcerts(state.concerts);
+  const dashboardConcertIds = new Set(dashboardConcerts.map(concert => concert.id));
+  const dashboardPaidOrders = paidOrders.filter(order => dashboardConcertIds.has(order.concert_id));
   const unknownOrders = new Map();
   paidOrders.filter(order => order.attribution_type === 'UNKNOWN').forEach(order => unknownOrders.set(order.concert_id, (unknownOrders.get(order.concert_id) || 0) + 1));
   paidOrders.forEach(order => {
@@ -536,18 +544,18 @@ async function loadOperations() {
     const currency = expense.currency || 'PLN';
     finance.alreadySpent.set(currency, (finance.alreadySpent.get(currency) || 0) + (Number(expense.amount) || 0));
   });
-  byId('m-active').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status)).length;
-  byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(paidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  byId('m-revenue').textContent = ordersResult.error ? '!' : currencyTotals(paidOrders, 'gross_revenue');
+  byId('m-active').textContent = concertsResult.error ? '!' : dashboardConcerts.length;
+  byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(dashboardPaidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
+  byId('m-revenue').textContent = ordersResult.error ? '!' : currencyTotals(dashboardPaidOrders, 'gross_revenue');
   const campaignSpend = new Map();
-  (campaignsResult.data || []).forEach(campaign => {
+  (campaignsResult.data || []).filter(campaign => dashboardConcertIds.has(campaign.concert_id)).forEach(campaign => {
     const currency = state.concerts.find(concert => concert.id === campaign.concert_id)?.currency || 'PLN';
     campaignSpend.set(currency, (campaignSpend.get(currency) || 0) + (Number(campaign.actual_spend) || 0));
   });
   byId('m-spend').textContent = campaignsResult.error ? '!' : formatCurrencyMap(campaignSpend);
-  const mandatory = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
-  const paid = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID');
-  const operationalResult = amountMap(paidOrders, 'gross_revenue');
+  const mandatory = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
+  const paid = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID');
+  const operationalResult = amountMap(dashboardPaidOrders, 'gross_revenue');
   [paid, mandatory].forEach(items => items.forEach(item => {
     const currency = item.currency || 'PLN';
     operationalResult.set(currency, (operationalResult.get(currency) || 0) - (Number(item.amount) || 0));
@@ -555,22 +563,22 @@ async function loadOperations() {
   campaignSpend.forEach((amount, currency) => operationalResult.set(currency, (operationalResult.get(currency) || 0) - amount));
   byId('m-mandatory').textContent = expensesResult.error ? '!' : currencyTotals(mandatory);
   byId('m-projected').textContent = expensesResult.error || ordersResult.error ? '!' : formatCurrencyMap(operationalResult);
-  byId('m-risk').textContent = concertsResult.error ? '!' : state.concerts.filter(concert => ['YELLOW', 'RED'].includes(concert.risk_status)).length;
+  byId('m-risk').textContent = concertsResult.error ? '!' : dashboardConcerts.filter(concert => ['YELLOW', 'RED'].includes(concert.risk_status)).length;
   const latestSnapshots = new Map();
   (snapshotsResult.data || []).forEach(snapshot => {
     const previous = latestSnapshots.get(snapshot.concert_id);
     if (!previous || String(snapshot.snapshot_date) > String(previous)) latestSnapshots.set(snapshot.concert_id, snapshot.snapshot_date);
   });
   const freshCutoff = new Date(); freshCutoff.setHours(0, 0, 0, 0); freshCutoff.setDate(freshCutoff.getDate() - 2);
-  const staleSnapshots = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && (!latestSnapshots.get(concert.id) || new Date(`${latestSnapshots.get(concert.id)}T12:00:00`) < freshCutoff));
+  const staleSnapshots = dashboardConcerts.filter(concert => !latestSnapshots.get(concert.id) || new Date(`${latestSnapshots.get(concert.id)}T12:00:00`) < freshCutoff);
   const concertSources = new Set((documentsResult.data || []).map(document => document.concert_id).filter(Boolean));
-  const sourceMissing = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !concertSources.has(concert.id));
+  const sourceMissing = dashboardConcerts.filter(concert => !concertSources.has(concert.id));
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
   const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
-  renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys);
+  renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys, dashboardConcerts);
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
-  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: PAID orders, внесені витрати та campaigns.actual_spend. «Без свіжого зрізу» означає відсутність нового підтвердженого звіту для ${fmt(staleSnapshots.length)} активних концертів, а не відсутність продажів.`;
+  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: оплаченные заказы, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
   if (!concertsResult.error) renderConcerts();
 }
 
@@ -1478,7 +1486,7 @@ function bindEvents() {
   ensureOperatorProfileFields();
   document.querySelectorAll('.ops-nav button').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
   document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showView(button.dataset.go)));
-  byId('dashboard-period').addEventListener('change', () => { if (state.concerts.length) renderConcerts(); });
+  byId('dashboard-period').addEventListener('change', () => { if (state.concerts.length) loadOperations(); });
   document.querySelectorAll('[data-quick]').forEach(button => button.addEventListener('click', async () => {
     const target = button.dataset.quick;
     showView(target === 'concert' ? 'concerts' : target === 'expense' ? 'finance' : target === 'sale' || target === 'import' ? 'sales' : 'channels');

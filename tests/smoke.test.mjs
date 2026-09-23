@@ -68,6 +68,10 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /function formatCurrencyMap/);
   assert.match(js, /ОПЕРАЦИОННЫЙ ОСТАТОК: \$\{money\(projectedResult, currency\)\}/);
   assert.match(js, /concertFinance/);
+  assert.match(js, /function dashboardPeriodConcerts/);
+  assert.match(js, /const dashboardPaidOrders = paidOrders\.filter/);
+  assert.match(js, /dashboard-period.*loadOperations/);
+  assert.match(js, /Факт: оплаченные заказы, внесённые расходы и фактические расходы кампаний/);
   assert.match(js, /БЛИЖАЙШИЙ ПЛАТЁЖ/);
   assert.doesNotMatch(js, /quantity,gross_amount/);
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
@@ -87,7 +91,7 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /button\.dataset\.action === 'source'/);
   assert.match(js, /button\.dataset\.action === 'snapshot'/);
   assert.match(js, /button\.dataset\.action === 'edit'/);
-  assert.match(js, /не відсутність продажів/);
+  assert.match(js, /а не отсутствие продаж/);
   for (const action of ['concert', 'expense', 'campaign', 'sale', 'tracking', 'import']) assert.match(html, new RegExp(`data-quick="${action}"`));
 });
 
