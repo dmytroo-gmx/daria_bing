@@ -241,6 +241,7 @@ test('report channel filter scopes headline metrics and concert cards consistent
   assert.match(html, /id="r-unattributed-note"/);
   assert.match(js, /const visibleCampaignIds = new Set\(visibleCampaigns\.map\(campaign => campaign\.id\)\)/);
   assert.match(js, /const visiblePaid = channelId === 'ALL' \? paid : paid\.filter\(order => visibleCampaignIds\.has\(order\.campaign_id\)\)/);
+  assert.match(js, /renderOperatorReport\(visiblePaid, operators, concerts, concertIds\)/);
   assert.match(js, /не относится к выбранному каналу/);
 });
 

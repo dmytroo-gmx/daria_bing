@@ -1243,7 +1243,7 @@ async function loadReportsModule() {
   byId('r-unattributed-note').textContent = channelId === 'ALL' ? 'без привязки к кампании' : 'не относится к выбранному каналу';
   byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id))).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
   renderChannelReport(metrics, concerts, concertIds, channelId);
-  renderOperatorReport(orders, operators, concerts, concertIds);
+  renderOperatorReport(visiblePaid, operators, concerts, concertIds);
   byId('reports-note').classList.remove('error');
   byId('reports-note').textContent = 'Стоимость привлечения и окупаемость показаны только как отношение внесённых данных. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.';
 }
