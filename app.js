@@ -986,7 +986,7 @@ function openTrackingForm(link = null) {
   if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати tracking links.')) return;
   if (!state.concerts.length) { setStatus('Спочатку додайте концерт.', true); return; }
   const form = byId('tracking-link-form'); populateChannelOptions(); form.reset(); form.hidden = false;
-  byId('tracking-form-mode').textContent = link ? 'РЕДАГУВАННЯ ПОСИЛАННЯ' : 'НОВЕ ПОСИЛАННЯ'; byId('tracking-form-title').textContent = link ? link.source_code : 'Додати tracking link'; byId('tracking-form-note').textContent = ''; form.elements.id.value = link?.id || '';
+  byId('tracking-form-mode').textContent = link ? 'РЕДАКТИРОВАНИЕ ССЫЛКИ' : 'НОВАЯ ССЫЛКА'; byId('tracking-form-title').textContent = link ? link.source_code : 'Добавить ссылку'; byId('tracking-form-note').textContent = ''; form.elements.id.value = link?.id || '';
   const fields = ['concert_id', 'campaign_id', 'operator_id', 'channel_id', 'source_code', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code', 'status', 'notes'];
   if (link) fields.forEach(field => { form.elements[field].value = link[field] ?? ''; });
   else form.elements.status.value = 'ACTIVE';
@@ -1002,8 +1002,8 @@ async function saveTrackingLink(event) {
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('tracking-form-note').textContent = 'Збереження…';
   const result = id ? await db.from('daria_tracking_links').update(payload).eq('id', id) : await db.from('daria_tracking_links').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('tracking-form-note').textContent = `Помилка: ${result.error.message}`; return; }
-  form.hidden = true; setStatus(id ? 'Tracking link оновлено' : 'Tracking link додано'); await loadChannelsModule();
+  if (result.error) { byId('tracking-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(id ? 'Ссылка обновлена' : 'Ссылка добавлена'); await loadChannelsModule();
 }
 
 function commission(value) { return value == null ? '—' : `${Number(value).toLocaleString('pl-PL', { maximumFractionDigits: 4 })}%`; }
