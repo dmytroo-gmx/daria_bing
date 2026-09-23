@@ -26,7 +26,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -534,15 +534,16 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, channelMetricsResult, operatorsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, unattributedReportsResult, channelMetricsResult, operatorsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
-    db.from('daria_orders').select('concert_id,campaign_id,ticket_count,gross_revenue,status,attribution_type'),
+    db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('id,concert_id,actual_spend'),
     db.from('daria_expenses').select('*'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
     db.from('daria_source_documents').select('concert_id'),
     db.from('daria_operational_tasks').select('concert_id,title,task_status'),
     db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
+    db.from('daria_unattributed_operator_reports').select('concert_id,operator_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
     db.rpc('daria_channel_metrics'),
     db.from('daria_ticketing_operators').select('name,legacy_recommendation,contract_notes,notes,last_offer_date').order('name')
   ]);
@@ -561,12 +562,14 @@ async function loadOperations() {
   state.totals = new Map();
   const paidOrders = ordersResult.error ? [] : (ordersResult.data || []).filter(order => order.status === 'PAID');
   const confirmedReports = reportsResult.error ? [] : reportsResult.data || [];
+  const unattributedReports = unattributedReportsResult.error ? [] : unattributedReportsResult.data || [];
   const paidCampaignIds = new Set(paidOrders.map(order => order.campaign_id).filter(Boolean));
   const latestReports = new Map();
   confirmedReports.forEach(report => { if (!paidCampaignIds.has(report.campaign_id) && (!latestReports.has(report.campaign_id) || `${report.reported_on}${report.created_at}` > `${latestReports.get(report.campaign_id).reported_on}${latestReports.get(report.campaign_id).created_at}`)) latestReports.set(report.campaign_id, report); });
   const dashboardConcerts = dashboardPeriodConcerts(state.concerts);
   const dashboardConcertIds = new Set(dashboardConcerts.map(concert => concert.id));
   const dashboardPaidOrders = paidOrders.filter(order => dashboardConcertIds.has(order.concert_id));
+  const dashboardUnattributedReports = latestFallbackUnattributedReports(unattributedReports, dashboardPaidOrders).filter(report => dashboardConcertIds.has(report.concert_id));
   const unknownOrders = new Map();
   paidOrders.filter(order => order.attribution_type === 'UNKNOWN').forEach(order => unknownOrders.set(order.concert_id, (unknownOrders.get(order.concert_id) || 0) + 1));
   paidOrders.forEach(order => {
@@ -581,6 +584,12 @@ async function loadOperations() {
     total.tickets += Number(report.confirmed_tickets) || 0;
     total.revenue += Number(report.confirmed_revenue) || 0;
     state.totals.set(campaign.concert_id, total);
+  });
+  latestFallbackUnattributedReports(unattributedReports, paidOrders).forEach(report => {
+    const total = state.totals.get(report.concert_id) || { tickets: 0, revenue: 0 };
+    total.tickets += Number(report.confirmed_tickets) || 0;
+    total.revenue += Number(report.confirmed_revenue) || 0;
+    state.totals.set(report.concert_id, total);
   });
   state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), selectedOptional: new Map(), alreadySpent: new Map(), nextMandatory: null }]));
   (campaignsResult.data || []).forEach(campaign => {
@@ -606,8 +615,8 @@ async function loadOperations() {
   });
   byId('m-active').textContent = concertsResult.error ? '!' : dashboardConcerts.length;
   const dashboardReports = (campaignsResult.data || []).filter(campaign => dashboardConcertIds.has(campaign.concert_id)).map(campaign => latestReports.get(campaign.id)).filter(Boolean);
-  byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(dashboardPaidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + dashboardReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
-  const dashboardRevenue = amountMap(dashboardPaidOrders, 'gross_revenue'); dashboardReports.forEach(report => dashboardRevenue.set(report.currency || 'PLN', (dashboardRevenue.get(report.currency || 'PLN') || 0) + (Number(report.confirmed_revenue) || 0)));
+  byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(dashboardPaidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + dashboardReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0) + dashboardUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
+  const dashboardRevenue = amountMap(dashboardPaidOrders, 'gross_revenue'); [...dashboardReports, ...dashboardUnattributedReports].forEach(report => dashboardRevenue.set(report.currency || 'PLN', (dashboardRevenue.get(report.currency || 'PLN') || 0) + (Number(report.confirmed_revenue) || 0)));
   byId('m-revenue').textContent = ordersResult.error ? '!' : formatCurrencyMap(dashboardRevenue);
   const campaignSpend = new Map();
   (campaignsResult.data || []).filter(campaign => dashboardConcertIds.has(campaign.concert_id)).forEach(campaign => {
@@ -643,7 +652,7 @@ async function loadOperations() {
   renderDashboardOperatorAnswer(operatorsResult.data || [], Boolean(operatorsResult.error));
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
-  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : reportsResult.error ? `Итоги операторов станут доступны после применения следующей миграции базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
+  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : reportsResult.error || unattributedReportsResult.error ? `Итоги операторов станут доступны после применения следующей миграции базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, итоги без измеряемого источника, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
   if (!concertsResult.error) renderConcerts();
 }
 
@@ -671,9 +680,10 @@ function renderSales() {
   }).join('') || '<div class="empty">За цим фільтром замовлень немає.</div>';
   const paid = state.orders.filter(order => order.status === 'PAID');
   const fallbackOperatorReports = latestFallbackOperatorReports(state.campaigns, paid, state.campaignConfirmedReports);
-  byId('s-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
+  const fallbackUnattributedReports = latestFallbackUnattributedReports(state.unattributedOperatorReports, paid);
+  byId('s-paid-tickets').textContent = fmt(paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
   const paidRevenue = amountMap(paid, 'gross_revenue');
-  fallbackOperatorReports.forEach(report => paidRevenue.set(report.currency || 'PLN', (paidRevenue.get(report.currency || 'PLN') || 0) + (Number(report.confirmed_revenue) || 0)));
+  [...fallbackOperatorReports, ...fallbackUnattributedReports].forEach(report => paidRevenue.set(report.currency || 'PLN', (paidRevenue.get(report.currency || 'PLN') || 0) + (Number(report.confirmed_revenue) || 0)));
   byId('s-paid-gross').textContent = formatCurrencyMap(paidRevenue);
   byId('s-refunded').textContent = fmt(state.orders.filter(order => order.status === 'REFUNDED').reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
   byId('s-unknown').textContent = state.orders.filter(order => order.attribution_type === 'UNKNOWN').length;
@@ -688,11 +698,12 @@ async function loadSalesModule() {
     return;
   }
   if (!state.concerts.length) await loadOperations();
-  const [ordersResult, operatorsResult, campaignsResult, reportsResult] = await Promise.all([
+  const [ordersResult, operatorsResult, campaignsResult, reportsResult, unattributedReportsResult] = await Promise.all([
     db.from('daria_orders').select('*').order('order_date', { ascending: false, nullsFirst: false }),
     db.from('daria_ticketing_operators').select('id,name').order('name'),
     db.from('daria_campaigns').select('id,campaign_name,source_code,concert_id').order('start_date', { ascending: false, nullsFirst: false }),
-    db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_tickets,confirmed_revenue,currency,created_at').order('reported_on', { ascending: false })
+    db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_tickets,confirmed_revenue,currency,created_at').order('reported_on', { ascending: false }),
+    db.from('daria_unattributed_operator_reports').select('concert_id,operator_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at').order('reported_on', { ascending: false })
   ]);
   const errors = [ordersResult.error && `orders: ${ordersResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`].filter(Boolean);
   if (errors.length) {
@@ -704,10 +715,11 @@ async function loadSalesModule() {
   state.operators = operatorsResult.data || [];
   state.campaigns = campaignsResult.data || [];
   state.campaignConfirmedReports = reportsResult.error ? [] : reportsResult.data || [];
+  state.unattributedOperatorReports = unattributedReportsResult.error ? [] : unattributedReportsResult.data || [];
   populateOrderOptions();
   renderSales();
   byId('sales-note').classList.remove('error');
-  byId('sales-note').textContent = reportsResult.error
+  byId('sales-note').textContent = reportsResult.error || unattributedReportsResult.error
     ? 'Оплаченные заказы показаны отдельно. Итоги операторов станут доступны после применения следующей миграции базы.'
     : 'Оплаченные заказы и последние подтверждённые итоги операторов без номеров заказов входят в продажи один раз. Возвраты и отмены не добавляются. Статус источника показывает уровень доказательности.';
 }
@@ -1148,6 +1160,50 @@ async function saveCampaignConfirmedReport(event) {
   form.hidden = true; setStatus('Подтверждённый итог оператора сохранён с документом-источником'); await Promise.all([loadChannelsModule(), loadReportsModule(), loadOperations()]);
 }
 
+async function loadUnattributedReportSources(concertId) {
+  const result = await db.from('daria_source_documents').select('id,source_name,source_date').eq('concert_id', concertId).order('source_date', { ascending: false, nullsFirst: false });
+  if (result.error) { setStatus(`Не удалось загрузить документы-источники: ${result.error.message}`, true); return false; }
+  const documents = result.data || [];
+  if (!documents.length) {
+    setStatus('Сначала загрузите PDF или CSV-отчёт оператора для этого концерта: итог без источника не сохраняется.', true);
+    showView('documents');
+    return false;
+  }
+  setSelectOptions('unattributed-report-source', documents.map(document => `<option value="${esc(document.id)}">${esc(document.source_name)} · ${esc(document.source_date || 'дата не указана')}</option>`).join(''));
+  return true;
+}
+
+async function openUnattributedOperatorReportForm() {
+  if (!requireEditor()) return;
+  if (!state.concerts.length) await loadOperations();
+  if (!state.operators.length) await loadOperatorsModule();
+  if (!state.concerts.length || !state.operators.length) { setStatus('Сначала добавьте концерт и подтвердите билетного оператора.', true); return; }
+  const form = byId('unattributed-operator-report-form'); form.reset(); form.hidden = false;
+  setSelectOptions('unattributed-report-concert', state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join(''));
+  setSelectOptions('unattributed-report-operator', state.operators.map(operator => `<option value="${esc(operator.id)}">${esc(operator.name)}</option>`).join(''));
+  form.elements.reported_on.value = new Date().toISOString().slice(0, 10);
+  form.elements.currency.value = state.concerts.find(concert => concert.id === form.elements.concert_id.value)?.currency || 'PLN';
+  byId('unattributed-operator-report-note').textContent = '';
+  form.elements.concert_id.onchange = async () => {
+    form.elements.currency.value = state.concerts.find(concert => concert.id === form.elements.concert_id.value)?.currency || 'PLN';
+    await loadUnattributedReportSources(form.elements.concert_id.value);
+  };
+  if (!await loadUnattributedReportSources(form.elements.concert_id.value)) { form.hidden = true; return; }
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveUnattributedOperatorReport(event) {
+  event.preventDefault(); if (!requireEditor()) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const existingUnknownOrders = state.orders.filter(order => order.concert_id === raw.concert_id && order.operator_id === raw.operator_id && order.status === 'PAID' && order.attribution_type === 'UNKNOWN');
+  if (existingUnknownOrders.length) { byId('unattributed-operator-report-note').textContent = 'Сохранение остановлено: уже есть оплаченные заказы этого оператора с неизвестным источником. Общий итог создал бы двойной учёт.'; return; }
+  const payload = { concert_id: raw.concert_id, operator_id: raw.operator_id, reported_on: raw.reported_on, source_document_id: raw.source_document_id, confirmed_orders: Number(raw.confirmed_orders), confirmed_tickets: Number(raw.confirmed_tickets), confirmed_revenue: Number(raw.confirmed_revenue), currency: raw.currency.trim().toUpperCase() || 'PLN', notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('unattributed-operator-report-note').textContent = 'Сохранение подтверждённого итога…';
+  const result = await db.from('daria_unattributed_operator_reports').upsert(payload, { onConflict: 'concert_id,operator_id,reported_on' }); submit.disabled = false;
+  if (result.error) { byId('unattributed-operator-report-note').textContent = `Итог не сохранён: ${result.error.message}`; return; }
+  form.hidden = true; setStatus('Подтверждённый итог без источника сохранён с документом-источником'); await Promise.all([loadSalesModule(), loadReportsModule(), loadOperations()]);
+}
+
 async function openConfirmedOrderFromCampaignResult() {
   if (!requireEditor()) return;
   const campaignId = byId('campaign-result-form').elements.campaign_id.value;
@@ -1292,11 +1348,12 @@ function ratio(numerator, denominator, suffix = '') {
   return `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(numerator / denominator)}${suffix}`;
 }
 
-function reportCard(concert, orders, expenses, campaigns, confirmedReports = []) {
+function reportCard(concert, orders, expenses, campaigns, confirmedReports = [], unattributedReports = []) {
   const currency = concert.currency || 'PLN';
   const paid = orders.filter(order => order.status === 'PAID');
   const fallbackReports = campaigns.flatMap(campaign => paid.some(order => order.campaign_id === campaign.id) ? [] : confirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`)).slice(0, 1));
-  const paidTickets = paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
+  const fallbackUnattributedReports = latestFallbackUnattributedReports(unattributedReports, paid);
+  const paidTickets = paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
   const campaignOrders = paid.filter(order => order.campaign_id && order.attribution_type === 'CONFIRMED');
   const paidExpenses = expenses.filter(expense => expense.payment_status === 'PAID');
   const mandatory = expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID');
@@ -1306,13 +1363,26 @@ function reportCard(concert, orders, expenses, campaigns, confirmedReports = [])
   const confirmedOrders = campaignOrders.length + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_orders) || 0), 0);
   const confirmedGross = campaignOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0);
   const confirmedTickets = campaignOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
-  const paidRevenue = paid.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0) + fallbackReports.filter(report => report.currency === currency).reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0);
-  return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${money(paidRevenue, currency)}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0))}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, confirmedOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА</b>${ratio(spend, confirmedTickets, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ</b>${ratio(confirmedGross, spend, '×')}</div></div></article>`;
+  const paidRevenue = paid.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0) + fallbackReports.filter(report => report.currency === currency).reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0) + fallbackUnattributedReports.filter(report => report.currency === currency).reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0);
+  const unattributedTickets = paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
+  return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${money(paidRevenue, currency)}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(unattributedTickets)}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, confirmedOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА</b>${ratio(spend, confirmedTickets, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ</b>${ratio(confirmedGross, spend, '×')}</div></div></article>`;
 }
 
 function latestFallbackOperatorReports(campaigns, paidOrders, confirmedReports) {
   const paidCampaignIds = new Set(paidOrders.filter(order => order.status === 'PAID').map(order => order.campaign_id).filter(Boolean));
   return campaigns.flatMap(campaign => paidCampaignIds.has(campaign.id) ? [] : confirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`)).slice(0, 1));
+}
+
+function latestFallbackUnattributedReports(reports, paidOrders) {
+  const paidUnknownPairs = new Set(paidOrders.filter(order => order.status === 'PAID' && order.attribution_type === 'UNKNOWN' && order.operator_id).map(order => `${order.concert_id}:${order.operator_id}`));
+  const latestByPair = new Map();
+  reports.forEach(report => {
+    const key = `${report.concert_id}:${report.operator_id}`;
+    if (paidUnknownPairs.has(key)) return;
+    const previous = latestByPair.get(key);
+    if (!previous || `${report.reported_on}${report.created_at}` > `${previous.reported_on}${previous.created_at}`) latestByPair.set(key, report);
+  });
+  return [...latestByPair.values()];
 }
 
 function reportTable(headers, rows, emptyMessage) {
@@ -1341,7 +1411,7 @@ function renderChannelReport(metrics, concerts, concertIds, channelId) {
   byId('channel-report-list').innerHTML = reportTable(['КАНАЛ', 'РАСХОДЫ', 'ЗАКАЗЫ ПЛАТФОРМЫ', 'ПОДТВЕРЖДЁННЫЕ ЗАКАЗЫ', 'БИЛЕТЫ', 'ВЫРУЧКА', 'СТОИМОСТЬ БИЛЕТА', 'ОКУПАЕМОСТЬ'], rows, 'Нет кампаний, подходящих под выбранный фильтр.');
 }
 
-function renderOperatorReport(orders, operators, concerts, concertIds) {
+function renderOperatorReport(orders, operators, concerts, concertIds, unattributedReports = []) {
   const concertById = new Map(concerts.map(concert => [concert.id, concert]));
   const operatorById = new Map(operators.map(operator => [operator.id, operator.name]));
   const grouped = new Map();
@@ -1354,6 +1424,17 @@ function renderOperatorReport(orders, operators, concerts, concertIds) {
     row.orders += 1;
     row.tickets += Number(order.ticket_count) || 0;
     row.revenue += Number(order.gross_revenue) || 0;
+    grouped.set(key, row);
+  });
+  latestFallbackUnattributedReports(unattributedReports, orders).forEach(report => {
+    const concert = concertById.get(report.concert_id);
+    if (!concert || !concertIds.has(report.concert_id)) return;
+    const currency = report.currency || concert.currency || 'PLN';
+    const key = `${report.operator_id}:${currency}`;
+    const row = grouped.get(key) || { name: operatorById.get(report.operator_id) || 'Оператор не указан', currency, orders: 0, tickets: 0, revenue: 0 };
+    row.orders += Number(report.confirmed_orders) || 0;
+    row.tickets += Number(report.confirmed_tickets) || 0;
+    row.revenue += Number(report.confirmed_revenue) || 0;
     grouped.set(key, row);
   });
   const rows = [...grouped.values()].sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name, 'ru')).map(row => `<tr><td><b>${esc(row.name)}</b></td><td>${fmt(row.orders)}</td><td>${fmt(row.tickets)}</td><td>${money(row.revenue, row.currency)}</td><td>${ratio(row.revenue, row.tickets, ` ${row.currency}`)}</td></tr>`);
@@ -1380,18 +1461,19 @@ async function loadReportsModule() {
     byId('reports-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не трактуется как ноль.';
     return;
   }
-  const [concertsResult, ordersResult, expensesResult, campaignsResult, metricsResult, operatorsResult, reportsResult] = await Promise.all([
+  const [concertsResult, ordersResult, expensesResult, campaignsResult, metricsResult, operatorsResult, reportsResult, unattributedReportsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,currency,status'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status'),
     db.from('daria_campaigns').select('id,concert_id,channel_id,actual_spend,platform_reported_orders,platform_reported_value'),
     db.rpc('daria_channel_metrics'),
     db.from('daria_ticketing_operators').select('id,name').order('name'),
-    db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false })
+    db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false }),
+    db.from('daria_unattributed_operator_reports').select('*').order('reported_on', { ascending: false })
   ]);
   const errors = [concertsResult.error && `concerts: ${concertsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`, expensesResult.error && `expenses: ${expensesResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, metricsResult.error && `channel metrics: ${metricsResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
   if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не удалось собрать отчёт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
-  const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [], confirmedReports = reportsResult.error ? [] : reportsResult.data || [];
+  const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [], confirmedReports = reportsResult.error ? [] : reportsResult.data || [], unattributedReports = unattributedReportsResult.error ? [] : unattributedReportsResult.data || [];
   populateReportFilters(concerts, metrics);
   const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, channelId = byId('report-channel-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
   const selectedConcert = concerts.find(concert => concert.id === concertId);
@@ -1404,20 +1486,22 @@ async function loadReportsModule() {
   const visibleCampaigns = campaigns.filter(campaign => concertIds.has(campaign.concert_id) && (channelId === 'ALL' || campaign.channel_id === channelId));
   const visibleCampaignIds = new Set(visibleCampaigns.map(campaign => campaign.id));
   const visiblePaid = channelId === 'ALL' ? paid : paid.filter(order => visibleCampaignIds.has(order.campaign_id));
+  const visibleUnattributedReports = channelId === 'ALL' ? unattributedReports.filter(report => concertIds.has(report.concert_id)) : [];
   const visibleMetrics = metrics.filter(metric => concertIds.has(metric.concert_id) && (channelId === 'ALL' || metric.channel_id === channelId));
   const fallbackOperatorReports = latestFallbackOperatorReports(visibleCampaigns, visiblePaid, confirmedReports);
   byId('r-concerts').textContent = visibleConcerts.length;
-  byId('r-paid-tickets').textContent = fmt(visiblePaid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
+  const fallbackUnattributedReports = latestFallbackUnattributedReports(visibleUnattributedReports, visiblePaid);
+  byId('r-paid-tickets').textContent = fmt(visiblePaid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
   byId('r-spend').textContent = money(visibleCampaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
-  byId('r-paid-tickets-note').textContent = fallbackOperatorReports.length ? 'подтверждённые заказы и итоги операторов' : channelId === 'ALL' ? 'подтверждённые заказы' : 'подтверждённые заказы выбранного канала';
+  byId('r-paid-tickets-note').textContent = fallbackOperatorReports.length || fallbackUnattributedReports.length ? 'подтверждённые заказы и итоги операторов' : channelId === 'ALL' ? 'подтверждённые заказы' : 'подтверждённые заказы выбранного канала';
   byId('r-spend-note').textContent = channelId === 'ALL' ? 'внесённые расходы кампаний' : 'расходы кампаний выбранного канала';
-  byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0)) : '—';
+  byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0)) : '—';
   byId('r-unattributed-note').textContent = channelId === 'ALL' ? 'без привязки к кампании' : 'не относится к выбранному каналу';
-  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id), confirmedReports)).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
+  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id), confirmedReports, channelId === 'ALL' ? unattributedReports.filter(report => report.concert_id === concert.id) : [])).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
   renderChannelReport(metrics, concerts, concertIds, channelId);
-  renderOperatorReport(visiblePaid, operators, concerts, concertIds);
+  renderOperatorReport(visiblePaid, operators, concerts, concertIds, visibleUnattributedReports);
   byId('reports-note').classList.remove('error');
-  byId('reports-note').textContent = reportsResult.error ? 'Итоги операторов станут доступны после применения следующей миграции базы. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.' : 'Подтверждённый итог оператора применяется только к кампании без оплаченных заказов. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.';
+  byId('reports-note').textContent = reportsResult.error || unattributedReportsResult.error ? 'Итоги операторов станут доступны после применения следующей миграции базы. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.' : 'Итог оператора по кампании применяется только без оплаченных заказов этой кампании; итог без источника применяется только без оплаченных неизвестных заказов этого оператора. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.';
 }
 
 function amountMap(items, field = 'amount') {
@@ -1670,6 +1754,7 @@ function bindEvents() {
     selectConcert(button.dataset.id);
   });
   byId('add-order').addEventListener('click', () => openOrderForm());
+  byId('add-unattributed-operator-report').addEventListener('click', openUnattributedOperatorReportForm);
   byId('add-campaign-result').addEventListener('click', async () => { showView('channels'); await loadChannelsModule(); openCampaignResultForm(); });
   byId('cancel-order').addEventListener('click', () => { byId('order-form').hidden = true; });
   byId('order-form').addEventListener('submit', saveOrder);
@@ -1702,6 +1787,8 @@ function bindEvents() {
   byId('campaign-result-report').addEventListener('click', openCampaignConfirmedReportForm);
   byId('cancel-campaign-confirmed-report').addEventListener('click', () => { byId('campaign-confirmed-report-form').hidden = true; });
   byId('campaign-confirmed-report-form').addEventListener('submit', saveCampaignConfirmedReport);
+  byId('cancel-unattributed-operator-report').addEventListener('click', () => { byId('unattributed-operator-report-form').hidden = true; });
+  byId('unattributed-operator-report-form').addEventListener('submit', saveUnattributedOperatorReport);
   byId('campaign-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-campaign]');
     if (button) openCampaignForm(state.campaigns.find(campaign => campaign.id === button.dataset.editCampaign));

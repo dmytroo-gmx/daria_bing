@@ -295,7 +295,7 @@ test('report channel filter scopes headline metrics and concert cards consistent
   assert.match(html, /id="r-unattributed-note"/);
   assert.match(js, /const visibleCampaignIds = new Set\(visibleCampaigns\.map\(campaign => campaign\.id\)\)/);
   assert.match(js, /const visiblePaid = channelId === 'ALL' \? paid : paid\.filter\(order => visibleCampaignIds\.has\(order\.campaign_id\)\)/);
-  assert.match(js, /renderOperatorReport\(visiblePaid, operators, concerts, concertIds\)/);
+  assert.match(js, /renderOperatorReport\(visiblePaid, operators, concerts, concertIds, visibleUnattributedReports\)/);
   assert.match(js, /не относится к выбранному каналу/);
   assert.match(js, /function latestFallbackOperatorReports\(campaigns, paidOrders, confirmedReports\)/);
   assert.match(js, /fallbackOperatorReports\.reduce\(\(sum, report\) => sum \+ \(Number\(report\.confirmed_tickets\) \|\| 0\), 0\)/);
@@ -322,6 +322,19 @@ test('operator report totals stay source-backed and do not duplicate paid orders
   assert.match(reportMigration, /create or replace function public\.daria_channel_metrics/);
   assert.match(js, /const fallbackOperatorReports = latestFallbackOperatorReports\(state\.campaigns, paid, state\.campaignConfirmedReports\)/);
   assert.match(js, /Оплаченные заказы и последние подтверждённые итоги операторов без номеров заказов входят в продажи один раз/);
+});
+
+test('unattributed operator report increases sales without assigning a channel', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0016_unattributed_operator_reports.sql', import.meta.url), 'utf8');
+  assert.match(html, /id="add-unattributed-operator-report"/);
+  assert.match(html, /id="unattributed-operator-report-form"/);
+  assert.match(js, /async function saveUnattributedOperatorReport/);
+  assert.match(js, /function latestFallbackUnattributedReports/);
+  assert.match(js, /daria_unattributed_operator_reports/);
+  assert.match(migration, /source_document_id uuid not null/);
+  assert.match(migration, /unique\(concert_id, operator_id, reported_on\)/);
+  assert.match(migration, /order_row\.attribution_type = 'UNKNOWN'/);
+  assert.match(migration, /Latest report per concert and operator is used only when no paid UNKNOWN order rows exist/);
 });
 
 test('an authenticated user must have a verified manager role before editing', () => {
