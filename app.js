@@ -1073,6 +1073,8 @@ function openTrackingForm(link = null) {
 async function saveTrackingLink(event) {
   event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти tracking link.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), id = raw.id;
+  const campaign = raw.campaign_id ? state.campaigns.find(item => item.id === raw.campaign_id) : null;
+  if (campaign && raw.source_code.trim() !== campaign.source_code) { byId('tracking-form-note').textContent = 'Код источника ссылки должен совпадать с кодом выбранной кампании.'; return; }
   const nullable = ['campaign_id', 'operator_id', 'channel_id', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code'];
   const payload = { concert_id: raw.concert_id, source_code: raw.source_code.trim(), status: raw.status, notes: raw.notes.trim() };
   nullable.forEach(field => { payload[field] = raw[field]?.trim() || null; });
