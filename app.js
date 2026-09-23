@@ -958,6 +958,25 @@ function openCampaignForm(campaign = null) {
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function openCampaignResultForm() {
+  if (!requireEditor()) return;
+  if (!state.campaigns.length) { setStatus('Сначала добавьте кампанию.', true); showView('channels'); return; }
+  const form = byId('campaign-result-form'); form.reset(); form.hidden = false; byId('campaign-result-note').textContent = '';
+  setSelectOptions('campaign-result-campaign', state.campaigns.map(campaign => `<option value="${esc(campaign.id)}">${esc(campaign.source_code)} · ${esc(campaign.campaign_name)}</option>`).join(''));
+  const applyCampaign = () => { const campaign = state.campaigns.find(item => item.id === form.elements.campaign_id.value); if (!campaign) return; form.elements.actual_spend.value = campaign.actual_spend ?? 0; form.elements.entries.value = campaign.entries ?? ''; form.elements.platform_reported_orders.value = campaign.platform_reported_orders ?? ''; form.elements.platform_reported_value.value = campaign.platform_reported_value ?? ''; };
+  form.elements.campaign_id.onchange = applyCampaign; applyCampaign(); form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveCampaignResult(event) {
+  event.preventDefault(); if (!requireEditor()) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const payload = { actual_spend: Number(raw.actual_spend || 0), entries: numberOrNull(raw.entries), platform_landing_page_views: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-result-note').textContent = 'Сохранение…';
+  const result = await db.from('daria_campaigns').update(payload).eq('id', raw.campaign_id); submit.disabled = false;
+  if (result.error) { byId('campaign-result-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus('Показатели кампании обновлены'); await Promise.all([loadChannelsModule(), loadReportsModule(), loadOperations()]);
+}
+
 function sourceToken(value, fallback) {
   const translit = { А:'A',Б:'B',В:'V',Г:'G',Д:'D',Е:'E',Ё:'E',Ж:'ZH',З:'Z',И:'I',Й:'Y',К:'K',Л:'L',М:'M',Н:'N',О:'O',П:'P',Р:'R',С:'S',Т:'T',У:'U',Ф:'F',Х:'H',Ц:'TS',Ч:'CH',Ш:'SH',Щ:'SCH',Ы:'Y',Э:'E',Ю:'YU',Я:'YA',І:'I',Ї:'YI',Є:'YE' };
   return String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split('').map(char => translit[char] || char).join('').replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || fallback;
@@ -1348,7 +1367,7 @@ function bindEvents() {
     if (target === 'concert') { openConcertForm(); return; }
     if (target === 'expense') { await loadFinance(); openExpenseForm(); }
     if (target === 'campaign') { await loadChannelsModule(); openCampaignForm(); }
-    if (target === 'sale') { await loadSalesModule(); openOrderForm(); }
+    if (target === 'sale') { await loadChannelsModule(); openCampaignResultForm(); }
     if (target === 'tracking') { await loadChannelsModule(); openTrackingForm(); }
     if (target === 'import') { await Promise.all([loadOperations(), loadOperatorsModule()]); openOrderImport(); }
   }));
@@ -1399,7 +1418,7 @@ function bindEvents() {
     selectConcert(button.dataset.id);
   });
   byId('add-order').addEventListener('click', () => openOrderForm());
-  byId('add-campaign-result').addEventListener('click', async () => { await loadSalesModule(); openOrderForm(); });
+  byId('add-campaign-result').addEventListener('click', async () => { await loadChannelsModule(); openCampaignResultForm(); });
   byId('cancel-order').addEventListener('click', () => { byId('order-form').hidden = true; });
   byId('order-form').addEventListener('submit', saveOrder);
   byId('order-concert-filter').addEventListener('change', renderSales);
@@ -1423,6 +1442,8 @@ function bindEvents() {
     ['change', 'input'].forEach(eventName => field.addEventListener(eventName, () => { if (!byId('campaign-form').elements.source_code.value.trim()) generateCampaignSourceCode(); }));
   });
   byId('campaign-form').addEventListener('submit', saveCampaign);
+  byId('cancel-campaign-result').addEventListener('click', () => { byId('campaign-result-form').hidden = true; });
+  byId('campaign-result-form').addEventListener('submit', saveCampaignResult);
   byId('campaign-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-campaign]');
     if (button) openCampaignForm(state.campaigns.find(campaign => campaign.id === button.dataset.editCampaign));
