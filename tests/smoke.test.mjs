@@ -290,8 +290,11 @@ test('managers can read but cannot directly edit the audit log', async () => {
   assert.doesNotMatch(migration, /for (insert|update|delete|all)/i);
 });
 
-test('legacy booking remains available and the responsive stylesheet loads', () => {
+test('legacy booking remains available but is explicitly separated from confirmed sales', () => {
   assert.match(js, /booking_sales/);
   assert.match(html, /id="save-booking"/);
+  assert.match(html, /id="open-confirmed-sales"/);
+  assert.match(html, /не являются подтверждёнными продажами/);
+  assert.match(js, /open-confirmed-sales'\)\.addEventListener/);
   assert.match(css, /@media\(max-width:820px\)/);
 });

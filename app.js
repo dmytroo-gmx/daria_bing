@@ -1547,6 +1547,7 @@ function bindEvents() {
     openExpenseForm(state.expenses.find(expense => expense.id === button.dataset.editExpense));
   });
   byId('save-booking').addEventListener('click', saveBooking);
+  byId('open-confirmed-sales').addEventListener('click', async () => { showView('sales'); await loadSalesModule(); openOrderForm(); });
 }
 
 async function init() {

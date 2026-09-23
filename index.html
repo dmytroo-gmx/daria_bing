@@ -17,7 +17,7 @@
     </header>
     <section class="login" id="login-panel" aria-label="Вход для редактора"><input id="editor-email" type="email" autocomplete="email" placeholder="Рабочая почта"><button class="button" id="send-login" type="button">ПОЛУЧИТЬ ССЫЛКУ</button><span class="login-note" id="login-note">Ссылка придёт на почту.</span></section>
     <nav class="ops-nav" aria-label="Основная навигация">
-      <button class="active" type="button" data-view="dashboard">ОБЗОР</button><button type="button" data-view="concerts">КОНЦЕРТЫ</button><button type="button" data-view="tasks">ЗАДАЧИ</button><button type="button" data-view="sales">ПРОДАЖИ</button><button type="button" data-view="channels">КАНАЛЫ</button><button type="button" data-view="documents">ДОКУМЕНТЫ</button><button type="button" data-view="operators">ОПЕРАТОРЫ</button><button type="button" data-view="finance">РАСХОДЫ</button><button type="button" data-view="reports">ОТЧЁТЫ</button><button type="button" data-view="booking">БРОНИРОВАНИЕ</button>
+      <button class="active" type="button" data-view="dashboard">ОБЗОР</button><button type="button" data-view="concerts">КОНЦЕРТЫ</button><button type="button" data-view="tasks">ЗАДАЧИ</button><button type="button" data-view="sales">ПРОДАЖИ</button><button type="button" data-view="channels">КАНАЛЫ</button><button type="button" data-view="documents">ДОКУМЕНТЫ</button><button type="button" data-view="operators">ОПЕРАТОРЫ</button><button type="button" data-view="finance">РАСХОДЫ</button><button type="button" data-view="reports">ОТЧЁТЫ</button><button type="button" data-view="booking">СТАРАЯ СВОДКА</button>
     </nav>
 
     <section class="view active" id="view-dashboard" data-panel="dashboard">
@@ -134,9 +134,9 @@
     </section>
 
     <section class="view" id="view-booking" data-panel="booking">
-      <div class="section-head"><div><p class="eyebrow">БРОНИРОВАНИЕ</p><h1>Продажи по операторам</h1><p class="section-copy">Совместимый модуль прежней панели бронирования. Данные хранятся в общей таблице продаж.</p></div><button class="button" id="save-booking" type="button">СОХРАНИТЬ ИЗМЕНЕНИЯ</button></div>
+      <div class="section-head"><div><p class="eyebrow">АРХИВНАЯ СОВМЕСТИМОСТЬ</p><h1>Старая сводка бронирований</h1><p class="section-copy">Это совместимый экран прежней панели. Его агрегированные числа не являются подтверждёнными продажами и не входят в отчёты Legacy Brain.</p></div><div class="quick-actions"><button class="button subtle" id="open-confirmed-sales" type="button">ПЕРЕЙТИ К ПОДТВЕРЖДЁННЫМ ЗАКАЗАМ</button><button class="button" id="save-booking" type="button">СОХРАНИТЬ ИЗМЕНЕНИЯ</button></div></div>
       <div class="hero-total"><span>ВСЬОГО ВНЕСЕНО</span><strong id="all-sold">0</strong><small>квитків · 2 концерти</small></div><div class="booking-list" id="booking-list"></div>
-      <div class="truth-note"><strong>Модель:</strong> break-even у цьому старому модулі є зафіксованим плановим орієнтиром від 01.07.2026, а не поточним фінансовим фактом.</div>
+      <div class="truth-note"><strong>Важно:</strong> этот экран сохранён, чтобы не потерять прежний рабочий процесс. Для операционной правды вносите каждый подтверждённый заказ через раздел «Продажи»: там есть оператор, номер заказа, источник и доказательство связи с кампанией.</div>
     </section>
     <footer><span>Legacy Brain · Legacy Imperial Concerts</span><span>Операційні дані, не фінансова рекомендація</span></footer>
   </main>
