@@ -213,7 +213,7 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /const currency = concert\.currency \|\| 'PLN'/);
   assert.match(js, /ОКУПАЕМОСТЬ ПО ПЛАТФОРМЕ/);
   assert.match(js, /async function loadReportsModule/);
-  assert.match(js, /Platform і confirmed навмисно не об’єднуються/);
+  assert.match(js, /Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются/);
   assert.match(js, /daria_channel_metrics/);
   assert.match(js, /function renderChannelReport/);
   assert.match(js, /function renderOperatorReport/);

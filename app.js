@@ -1147,8 +1147,8 @@ function populateReportFilters(concerts, metrics) {
 async function loadReportsModule() {
   if (!state.session) {
     ['r-concerts', 'r-paid-tickets', 'r-spend', 'r-unattributed'].forEach(id => { byId(id).textContent = '—'; });
-    byId('report-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб побачити звіти.</div>';
-    byId('reports-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як нуль.';
+    byId('report-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть отчёты.</div>';
+    byId('reports-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не трактуется как ноль.';
     return;
   }
   const [concertsResult, ordersResult, expensesResult, campaignsResult, metricsResult, operatorsResult] = await Promise.all([
@@ -1160,7 +1160,7 @@ async function loadReportsModule() {
     db.from('daria_ticketing_operators').select('id,name').order('name')
   ]);
   const errors = [concertsResult.error && `concerts: ${concertsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`, expensesResult.error && `expenses: ${expensesResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, metricsResult.error && `channel metrics: ${metricsResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
-  if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не вдалося зібрати звіт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
+  if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не удалось собрать отчёт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
   const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [];
   populateReportFilters(concerts, metrics);
   const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, channelId = byId('report-channel-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
@@ -1176,7 +1176,7 @@ async function loadReportsModule() {
   renderChannelReport(metrics, concerts, concertIds, channelId);
   renderOperatorReport(orders, operators, concerts, concertIds);
   byId('reports-note').classList.remove('error');
-  byId('reports-note').textContent = 'CPA і ROAS показано лише як відношення внесених даних. Platform і confirmed навмисно не об’єднуються.';
+  byId('reports-note').textContent = 'Стоимость привлечения и окупаемость показаны только как отношение внесённых данных. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.';
 }
 
 function amountMap(items, field = 'amount') {
