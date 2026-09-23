@@ -51,18 +51,42 @@ const staticRussianLabels = {
   'PAYMENT FEE, %': 'КОМИССИЯ ПЛАТЕЖА, %', 'SETUP FEE': 'РАЗОВЫЙ ЗАПУСК', 'MONTHLY FEE': 'ЕЖЕМЕСЯЧНАЯ ПЛАТА', 'CAPI FEE': 'ПЛАТА ЗА СЕРВЕРНУЮ ПЕРЕДАЧУ',
   'EXCLUSIVITY REQUIRED': 'ЭКСКЛЮЗИВНОСТЬ', 'NEGOTIATION STATUS': 'СТАТУС ПЕРЕГОВОРОВ', 'EXCLUSIVITY TERMS': 'УСЛОВИЯ ЭКСКЛЮЗИВНОСТИ', 'CONTRACT NOTES': 'ЗАМЕТКИ ПО ДОГОВОРУ',
   'Meta Pixel': 'Пиксель Meta', 'CAPI': 'Серверная передача', 'GTM': 'Диспетчер тегов', 'Statistical links': 'Статистические ссылки', 'Promo codes': 'Промокоды', 'Marketplace': 'Маркетплейс', 'SMS marketing': 'СМС-рассылки', 'Email marketing': 'Рассылки по почте',
-  'break-even': 'точка безубыточности', 'Операційні дані, не фінансова рекомендація': 'Операционные данные, не финансовая рекомендация'
+  'break-even': 'точка безубыточности', 'Операційні дані, не фінансова рекомендація': 'Операционные данные, не финансовая рекомендация',
+  'ДОДАТИ ДЖЕРЕЛО': 'ДОБАВИТЬ ИСТОЧНИК', 'ДОДАТИ ЗРІЗ': 'ДОБАВИТЬ СРЕЗ', 'ВІДКРИТИ': 'ОТКРЫТЬ', 'РЕДАГУВАННЯ': 'РЕДАКТИРОВАНИЕ', 'РЕДАГУВАННЯ ЗАДАЧІ': 'РЕДАКТИРОВАНИЕ ЗАДАЧИ', 'НОВА ЗАДАЧА': 'НОВАЯ ЗАДАЧА', 'Додати задачу': 'Добавить задачу', 'РЕДАГУВАННЯ ОПЕРАТОРА': 'РЕДАКТИРОВАНИЕ ОПЕРАТОРА', 'НОВИЙ ОПЕРАТОР': 'НОВЫЙ ОПЕРАТОР', 'Додати оператора': 'Добавить оператора',
+  'РЕДАГУВАННЯ ВИТРАТИ': 'РЕДАКТИРОВАНИЕ РАСХОДА', 'НОВА ВИТРАТА': 'НОВЫЙ РАСХОД', 'Додати запис': 'Добавить запись', 'РЕДАГУВАТИ': 'ИЗМЕНИТЬ', 'ОЧИСТИТИ': 'ОЧИСТИТЬ', 'квитків': 'билетов', 'із': 'из', 'місць': 'мест', 'орієнтир': 'ориентир',
+  'без дати': 'без даты', 'дата джерела не задана': 'дата источника не указана', 'майданчик не задано': 'площадка не указана', 'Концерт не знайдено': 'Концерт не найден', 'строк не задано': 'срок не указан', 'За цим фільтром задач немає.': 'По этому фильтру задач нет.', 'За цим фільтром замовлень немає.': 'По этому фильтру заказов нет.', 'За цим фільтром записів немає.': 'По этому фильтру записей нет.',
+  'Збереження…': 'Сохранение…', 'Помилка:': 'Ошибка:', 'Концерт оновлено у спільній базі': 'Концерт обновлён в общей базе', 'Концерт додано до спільної бази': 'Концерт добавлен в общую базу', 'Замовлення оновлено у спільній базі': 'Заказ обновлён в общей базе', 'Замовлення додано до спільної бази': 'Заказ добавлен в общую базу', 'Кампанію оновлено': 'Кампания обновлена', 'Кампанію додано': 'Кампания добавлена', 'Витрату оновлено у спільній базі': 'Расход обновлён в общей базе', 'Витрату додано до спільної бази': 'Расход добавлен в общую базу', 'Оператора оновлено': 'Оператор обновлён', 'Оператора додано': 'Оператор добавлен',
+  'Спочатку додайте концерт до реєстру.': 'Сначала добавьте концерт в реестр.', 'Спочатку додайте концерт.': 'Сначала добавьте концерт.', 'Спочатку додайте або підтвердьте квиткового оператора.': 'Сначала добавьте или подтвердите билетного оператора.', 'Увійдіть через робочу пошту, щоб': 'Войдите через рабочую почту, чтобы', 'не вдалося': 'не удалось', 'Не вдалося': 'Не удалось', 'оновлено': 'обновлён', 'додано': 'добавлен', 'збережено': 'сохранён', 'Зріз': 'Срез', 'зріз': 'срез', 'джерелом': 'источником', 'джерело': 'источник', 'джерела': 'источника', 'Застосування перевірених даних…': 'Применение проверенных данных…', 'Перевірені дані Meta CSV застосовано до кампанії': 'Проверенные данные Meta CSV применены к кампании',
+  'ALREADY PAID': 'УЖЕ ОПЛАЧЕНО', 'MANDATORY FUTURE': 'ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'OPTIONAL FUTURE': 'НЕОБЯЗАТЕЛЬНЫЙ РАСХОД', 'REFUNDABLE DEPOSIT': 'ВОЗВРАТНЫЙ ЗАЛОГ', 'UNPAID': 'НЕ ОПЛАЧЕНО', 'PARTIALLY PAID': 'ОПЛАЧЕНО ЧАСТИЧНО', 'TO_BE_CLARIFIED': 'ТРЕБУЕТ УТОЧНЕНИЯ', 'NEGOTIATING': 'ПЕРЕГОВОРЫ', 'RECOMMENDED': 'РЕКОМЕНДОВАН', 'BACKUP': 'РЕЗЕРВНЫЙ', 'NOT SUITABLE': 'НЕ ПОДХОДИТ', 'PAUSED': 'НА ПАУЗЕ', 'PDF': 'ДОКУМЕНТ', 'CSV': 'ТАБЛИЧНАЯ ВЫГРУЗКА', 'PREVIEW': 'ПРЕДПРОСМОТР'
 };
 
+function translateStaticText(value) {
+  return Object.entries(staticRussianLabels).reduce((result, [from, to]) => result.replaceAll(from, to), String(value ?? ''));
+}
+
 function localizeStaticInterface() {
-  const translate = value => Object.entries(staticRussianLabels).reduce((result, [from, to]) => result.replaceAll(from, to), value);
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
-  nodes.forEach(node => { node.nodeValue = translate(node.nodeValue); });
+  nodes.forEach(node => { const translated = translateStaticText(node.nodeValue); if (translated !== node.nodeValue) node.nodeValue = translated; });
   document.querySelectorAll('[data-tooltip],[placeholder]').forEach(element => {
-    if (element.dataset.tooltip) element.dataset.tooltip = translate(element.dataset.tooltip);
-    if (element.placeholder) element.placeholder = translate(element.placeholder);
+    if (element.dataset.tooltip) element.dataset.tooltip = translateStaticText(element.dataset.tooltip);
+    if (element.placeholder) element.placeholder = translateStaticText(element.placeholder);
   });
+  const observer = new MutationObserver(records => records.forEach(record => {
+    if (record.type === 'characterData') { const translated = translateStaticText(record.target.nodeValue); if (translated !== record.target.nodeValue) record.target.nodeValue = translated; }
+    record.addedNodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) { const translated = translateStaticText(node.nodeValue); if (translated !== node.nodeValue) node.nodeValue = translated; }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const addedText = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        while (addedText.nextNode()) { const translated = translateStaticText(addedText.currentNode.nodeValue); if (translated !== addedText.currentNode.nodeValue) addedText.currentNode.nodeValue = translated; }
+        node.querySelectorAll?.('[data-tooltip],[placeholder]').forEach(element => {
+          if (element.dataset.tooltip) element.dataset.tooltip = translateStaticText(element.dataset.tooltip);
+          if (element.placeholder) element.placeholder = translateStaticText(element.placeholder);
+        });
+      }
+    });
+  }));
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 }
 
 function setStatus(message, isError = false) {
