@@ -23,6 +23,7 @@ test('static UI labels are localized for Russian operation', () => {
 test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /const detailTabs = \['OVERVIEW', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
+  assert.match(js, /const projectedResult = Number\(metric\.gross_revenue/);
   assert.match(js, /data-detail-tab/);
   assert.match(js, /daria_audit_log/);
   assert.match(html, /id="snapshot-form"/);
@@ -62,6 +63,7 @@ test('concerts support create, edit, detail, filters and all schema statuses', (
 test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /ticket_count,gross_revenue,status/);
   assert.match(js, /daria_campaigns'\)\.select\('concert_id,actual_spend'\)/);
+  assert.match(js, /campaignSpend\.forEach\(\(amount, currency\) => operationalResult\.set/);
   assert.match(js, /function formatCurrencyMap/);
   assert.match(js, /concertFinance/);
   assert.match(js, /БЛИЖАЙШИЙ ПЛАТЁЖ/);
