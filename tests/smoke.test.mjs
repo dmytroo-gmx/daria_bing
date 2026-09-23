@@ -136,12 +136,22 @@ test('finance keeps expense classes and currencies separate', () => {
   assert.match(html, /MANDATORY_FUTURE/);
   assert.match(html, /OPTIONAL_FUTURE/);
   assert.match(html, /REFUNDABLE_DEPOSIT/);
+  assert.match(html, /name="include_in_projected_cost"/);
+  assert.match(js, /selectedOptional/);
+  assert.match(js, /НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН/);
   assert.match(js, /function currencyTotals/);
   assert.match(js, /daria_expenses'\)\.select\('\*'\)/);
   assert.match(js, /payment_status === 'PAID'/);
   assert.match(js, /label\('expenseType', expense\.expense_type\)/);
   assert.match(js, /label\('paymentStatus', expense\.payment_status\)/);
   assert.doesNotMatch(js, /reduce\([^\n]+currency[^\n]+amount/);
+});
+
+test('selected optional costs are opt-in at database level', async () => {
+  const optionalCostMigration = await readFile(new URL('../supabase/migrations/0015_selected_optional_costs.sql', import.meta.url), 'utf8');
+  assert.match(optionalCostMigration, /add column if not exists include_in_projected_cost boolean not null default false/);
+  assert.match(optionalCostMigration, /expense_type = 'OPTIONAL_FUTURE' and include_in_projected_cost/);
+  assert.match(optionalCostMigration, /projected_nonref_cost/);
 });
 
 test('channels preserve the separation of channels, campaigns and tracking links', () => {

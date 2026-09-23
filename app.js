@@ -171,15 +171,15 @@ function riskClass(risk) { return `risk-${String(risk || 'GRAY').toLowerCase()}`
 
 function concertCard(concert, compact = false) {
   const total = state.totals.get(concert.id) || { tickets: 0, revenue: 0 };
-  const finance = state.concertFinance.get(concert.id) || { marketing: new Map(), mandatory: new Map(), alreadySpent: new Map(), nextMandatory: null };
+  const finance = state.concertFinance.get(concert.id) || { marketing: new Map(), mandatory: new Map(), selectedOptional: new Map(), alreadySpent: new Map(), nextMandatory: null };
   const capacity = Number(concert.capacity) || 0, occupancy = capacity ? `${Math.round(total.tickets / capacity * 100)}%` : '—';
   const currency = concert.currency || 'PLN';
-  const breakEvenTicketsValue = breakEvenTickets(concert, (finance.marketing.get(currency) || 0) + (finance.mandatory.get(currency) || 0) + (finance.alreadySpent.get(currency) || 0));
+  const breakEvenTicketsValue = breakEvenTickets(concert, (finance.marketing.get(currency) || 0) + (finance.mandatory.get(currency) || 0) + (finance.selectedOptional.get(currency) || 0) + (finance.alreadySpent.get(currency) || 0));
   const breakEven = breakEvenTicketsValue == null ? '—' : fmt(Math.max(0, breakEvenTicketsValue - total.tickets));
-  const projectedResult = Number(total.revenue || 0) - (finance.marketing.get(currency) || 0) - (finance.mandatory.get(currency) || 0) - (finance.alreadySpent.get(currency) || 0);
+  const projectedResult = Number(total.revenue || 0) - (finance.marketing.get(currency) || 0) - (finance.mandatory.get(currency) || 0) - (finance.selectedOptional.get(currency) || 0) - (finance.alreadySpent.get(currency) || 0);
   const nextMandatory = finance.nextMandatory ? `${money(finance.nextMandatory.amount, finance.nextMandatory.currency)}${finance.nextMandatory.due_date ? ` · до ${dateLabel(finance.nextMandatory.due_date)}` : ''}` : '—';
   return `<article class="ops-concert ${state.selectedConcertId === concert.id ? 'selected' : ''}" data-concert-id="${esc(concert.id)}">
-    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} из ${capacity ? fmt(capacity) : '—'} билетов · заполнение ${occupancy} · выручка ${money(total.revenue, currency)}</small><div class="concert-facts"><span>РАСХОДЫ НА КАМПАНИИ: ${formatCurrencyMap(finance.marketing)}</span><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ: ${formatCurrencyMap(finance.mandatory)}</span><span>ОПЕРАЦИОННЫЙ ОСТАТОК: ${money(projectedResult, currency)}</span><span>БЛИЖАЙШИЙ ПЛАТЁЖ: ${nextMandatory}</span>${breakEvenTicketsValue == null ? '' : `<span>ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ: ${breakEven} билетов</span>`}</div></div>
+    <div><small>${esc(label('status', concert.status))} · ${esc(concert.city)} · ${esc(dateLabel(concert.event_date))}</small><h3>${esc(concert.event_name)}</h3><small>${esc(concert.venue || 'площадка не указана')} · ${fmt(total.tickets)} из ${capacity ? fmt(capacity) : '—'} билетов · заполнение ${occupancy} · выручка ${money(total.revenue, currency)}</small><div class="concert-facts"><span>РАСХОДЫ НА КАМПАНИИ: ${formatCurrencyMap(finance.marketing)}</span><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ: ${formatCurrencyMap(finance.mandatory)}</span><span>НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН: ${formatCurrencyMap(finance.selectedOptional)}</span><span>ОПЕРАЦИОННЫЙ ОСТАТОК: ${money(projectedResult, currency)}</span><span>БЛИЖАЙШИЙ ПЛАТЁЖ: ${nextMandatory}</span>${breakEvenTicketsValue == null ? '' : `<span>ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ: ${breakEven} билетов</span>`}</div></div>
     <div class="concert-actions"><span class="risk ${riskClass(concert.risk_status)}">${esc(label('risk', concert.risk_status || 'GRAY'))}</span>${compact ? `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ОТКРЫТЬ</button>` : `<button class="text-button" type="button" data-action="details" data-id="${esc(concert.id)}">ДЕТАЛИ</button><button class="text-button" type="button" data-action="edit" data-id="${esc(concert.id)}">ИЗМЕНИТЬ</button>`}</div>
   </article>`;
 }
@@ -323,11 +323,12 @@ function renderConcertDetail() {
   const sold = Number(metric.paid_tickets || 0), capacity = Number(concert.capacity || 0), remaining = capacity ? Math.max(0, capacity - sold) : null;
   const breakEven = breakEvenTickets(concert, Number(metric.projected_nonref_cost || 0) + Number(metric.marketing_spend || 0));
   const breakNeeded = breakEven == null ? null : Math.max(0, breakEven - sold);
-  const projectedResult = Number(metric.gross_revenue || 0) - Number(metric.already_spent || 0) - Number(metric.mandatory_future || 0) - Number(metric.marketing_spend || 0);
+  const selectedOptional = detail.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost && !['PAID', 'REFUNDED'].includes(expense.payment_status)).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+  const projectedResult = Number(metric.gross_revenue || 0) - Number(metric.already_spent || 0) - Number(metric.mandatory_future || 0) - selectedOptional - Number(metric.marketing_spend || 0);
   const nextMandatory = detail.expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status)).sort((left, right) => String(left.due_date || '9999-12-31').localeCompare(String(right.due_date || '9999-12-31')))[0];
   const tabs = detailTabs.map(tab => `<button type="button" class="detail-tab ${state.detailTab === tab ? 'active' : ''}" data-detail-tab="${tab}">${detailTabLabels[tab]}</button>`).join('');
   let content = '';
-  if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО ОПЛАЧЕННЫХ БИЛЕТОВ', fmt(sold))}${detailValue('ОСТАЛОСЬ', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОЛНЕНИЕ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ТОЧКА БЕЗУБЫТОЧНОСТИ', breakEven == null ? '—' : fmt(breakEven))}${detailValue('ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue(help('ВЫРУЧКА ДО УДЕРЖАНИЙ', 'Сумма оплаченных заказов до комиссии оператора и расходов.'), money(metric.gross_revenue, concert.currency))}${detailValue(help('ВЫРУЧКА ПОСЛЕ УДЕРЖАНИЙ', 'Внесённая сумма после удержаний оператора.'), money(metric.net_revenue, concert.currency))}${detailValue(help('УЖЕ ОПЛАЧЕНО', 'Подтверждённые расходы, которые уже отмечены как оплаченные.'), money(metric.already_spent, concert.currency))}${detailValue(help('ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'Будущие обязательные расходы, которые ещё не оплачены.'), money(metric.mandatory_future, concert.currency))}${detailValue(help('БЛИЖАЙШИЙ ОБЯЗАТЕЛЬНЫЙ ПЛАТЁЖ', 'Самый ранний по сроку неоплаченный обязательный расход.'), nextMandatory ? `${money(nextMandatory.amount, nextMandatory.currency || concert.currency)} · ${nextMandatory.due_date ? dateLabel(nextMandatory.due_date) : 'дата не указана'}` : '—')}${detailValue(help('НЕОБЯЗАТЕЛЬНЫЕ РАСХОДЫ', 'Будущие расходы, которые можно не нести без нарушения обязательств.'), money(metric.optional_future, concert.currency))}${detailValue(help('ВОЗВРАТНЫЕ ЗАЛОГИ', 'Внесённые суммы, которые должны вернуться после выполнения условий. Они не входят в невозвратную себестоимость.'), money(metric.refundable_deposits, concert.currency))}${detailValue(help('РАСХОДЫ НА РЕКЛАМУ', 'Фактически внесённые расходы по кампаниям.'), money(metric.marketing_spend, concert.currency))}${detailValue(help('ПЛАНОВЫЕ НЕВОЗВРАТНЫЕ РАСХОДЫ', 'Уже оплаченные расходы плюс обязательные будущие. Возвратные залоги и необязательные расходы не включены.'), money(metric.projected_nonref_cost, concert.currency))}${detailValue(help('ОПЕРАЦИОННЫЙ ОСТАТОК', 'Расчёт: выручка минус уже оплаченные расходы, обязательные будущие расходы и фактические расходы кампаний.'), money(projectedResult, concert.currency))}</div><div class="truth-note">${concert.break_even_mode === 'CALCULATED' ? 'Точка безубыточности рассчитана из внесённых невозвратных расходов и фактических расходов кампаний. Валюты автоматически не конвертируются.' : detail.server ? 'Показатели рассчитаны в общей базе. Валюты автоматически не конвертируются.' : 'Показатели из базы ещё не загружены; показан доступный локальный итог.'}</div>`;
+  if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО ОПЛАЧЕННЫХ БИЛЕТОВ', fmt(sold))}${detailValue('ОСТАЛОСЬ', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОЛНЕНИЕ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ТОЧКА БЕЗУБЫТОЧНОСТИ', breakEven == null ? '—' : fmt(breakEven))}${detailValue('ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue(help('ВЫРУЧКА ДО УДЕРЖАНИЙ', 'Сумма оплаченных заказов до комиссии оператора и расходов.'), money(metric.gross_revenue, concert.currency))}${detailValue(help('ВЫРУЧКА ПОСЛЕ УДЕРЖАНИЙ', 'Внесённая сумма после удержаний оператора.'), money(metric.net_revenue, concert.currency))}${detailValue(help('УЖЕ ОПЛАЧЕНО', 'Подтверждённые расходы, которые уже отмечены как оплаченные.'), money(metric.already_spent, concert.currency))}${detailValue(help('ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'Будущие обязательные расходы, которые ещё не оплачены.'), money(metric.mandatory_future, concert.currency))}${detailValue(help('БЛИЖАЙШИЙ ОБЯЗАТЕЛЬНЫЙ ПЛАТЁЖ', 'Самый ранний по сроку неоплаченный обязательный расход.'), nextMandatory ? `${money(nextMandatory.amount, nextMandatory.currency || concert.currency)} · ${nextMandatory.due_date ? dateLabel(nextMandatory.due_date) : 'дата не указана'}` : '—')}${detailValue(help('НЕОБЯЗАТЕЛЬНЫЕ РАСХОДЫ', 'Будущие расходы, которые можно не нести без нарушения обязательств.'), money(metric.optional_future, concert.currency))}${detailValue(help('НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН', 'Та часть необязательных расходов, которую явно включили в плановую себестоимость.'), money(selectedOptional, concert.currency))}${detailValue(help('ВОЗВРАТНЫЕ ЗАЛОГИ', 'Внесённые суммы, которые должны вернуться после выполнения условий. Они не входят в невозвратную себестоимость.'), money(metric.refundable_deposits, concert.currency))}${detailValue(help('РАСХОДЫ НА РЕКЛАМУ', 'Фактически внесённые расходы по кампаниям.'), money(metric.marketing_spend, concert.currency))}${detailValue(help('ПЛАНОВЫЕ НЕВОЗВРАТНЫЕ РАСХОДЫ', 'Уже оплаченные расходы, обязательные будущие и явно включённые необязательные расходы. Возвратные залоги не включены.'), money(metric.projected_nonref_cost, concert.currency))}${detailValue(help('ОПЕРАЦИОННЫЙ ОСТАТОК', 'Расчёт: выручка минус уже оплаченные расходы, обязательные будущие, выбранные необязательные расходы и фактические расходы кампаний.'), money(projectedResult, concert.currency))}</div><div class="truth-note">${concert.break_even_mode === 'CALCULATED' ? 'Точка безубыточности рассчитана из внесённых невозвратных расходов и фактических расходов кампаний. Валюты автоматически не конвертируются.' : detail.server ? 'Показатели рассчитаны в общей базе. Валюты автоматически не конвертируются.' : 'Показатели из базы ещё не загружены; показан доступный локальный итог.'}</div>`;
   if (state.detailTab === 'CHECKLIST') { const sourceReady = detail.documents.length > 0, snapshotsReady = detail.snapshots.length > 0, sourcedSnapshots = detail.snapshots.filter(snapshot => snapshot.source_document_id).length; content = `<div class="truth-note">Это техническая готовность данных, а не оценка финансового состояния концерта.</div>${checklistItem(sourceReady, 'Источник для концерта', sourceReady ? `${fmt(detail.documents.length)} файлов привязано` : 'Сначала нужен файл от оператора или Meta', sourceReady ? '' : 'source')}${checklistItem(snapshotsReady, 'Ежедневный срез продаж', snapshotsReady ? `${fmt(detail.snapshots.length)} срезов внесено` : 'После источника внесите первый срез по одному оператору', snapshotsReady || !sourceReady ? '' : 'snapshot')}${checklistItem(!snapshotsReady || sourcedSnapshots === detail.snapshots.length, 'Подтверждения для срезов', !snapshotsReady ? 'Срезов ещё нет' : `${fmt(sourcedSnapshots)} из ${fmt(detail.snapshots.length)} срезов имеют файл-источник`)}`; }
   if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОБАВИТЬ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}${task.details ? ` · ${esc(task.details)}` : ''}</span></div>`).join('') || '<div class="empty">Для этого концерта задач ещё нет.</div>'}`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)} · ${esc(label('attribution', order.attribution_type))}</span></div>`).join('') || '<div class="empty">Записей ещё нет.</div>'; }
@@ -537,7 +538,7 @@ async function loadOperations() {
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('id,concert_id,actual_spend'),
-    db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
+    db.from('daria_expenses').select('*'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
     db.from('daria_source_documents').select('concert_id'),
     db.from('daria_operational_tasks').select('concert_id,title,task_status'),
@@ -581,7 +582,7 @@ async function loadOperations() {
     total.revenue += Number(report.confirmed_revenue) || 0;
     state.totals.set(campaign.concert_id, total);
   });
-  state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), alreadySpent: new Map(), nextMandatory: null }]));
+  state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), selectedOptional: new Map(), alreadySpent: new Map(), nextMandatory: null }]));
   (campaignsResult.data || []).forEach(campaign => {
     const finance = state.concertFinance.get(campaign.concert_id); if (!finance) return;
     const currency = state.concerts.find(concert => concert.id === campaign.concert_id)?.currency || 'PLN';
@@ -598,6 +599,11 @@ async function loadOperations() {
     const currency = expense.currency || 'PLN';
     finance.alreadySpent.set(currency, (finance.alreadySpent.get(currency) || 0) + (Number(expense.amount) || 0));
   });
+  (expensesResult.data || []).filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost && !['PAID', 'REFUNDED'].includes(expense.payment_status)).forEach(expense => {
+    const finance = state.concertFinance.get(expense.concert_id); if (!finance) return;
+    const currency = expense.currency || 'PLN';
+    finance.selectedOptional.set(currency, (finance.selectedOptional.get(currency) || 0) + (Number(expense.amount) || 0));
+  });
   byId('m-active').textContent = concertsResult.error ? '!' : dashboardConcerts.length;
   const dashboardReports = (campaignsResult.data || []).filter(campaign => dashboardConcertIds.has(campaign.concert_id)).map(campaign => latestReports.get(campaign.id)).filter(Boolean);
   byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(dashboardPaidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + dashboardReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
@@ -611,8 +617,9 @@ async function loadOperations() {
   byId('m-spend').textContent = campaignsResult.error ? '!' : formatCurrencyMap(campaignSpend);
   const mandatory = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
   const paid = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID');
+  const selectedOptional = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost && !['PAID', 'REFUNDED'].includes(expense.payment_status));
   const operationalResult = new Map(dashboardRevenue);
-  [paid, mandatory].forEach(items => items.forEach(item => {
+  [paid, mandatory, selectedOptional].forEach(items => items.forEach(item => {
     const currency = item.currency || 'PLN';
     operationalResult.set(currency, (operationalResult.get(currency) || 0) - (Number(item.amount) || 0));
   }));
@@ -1473,6 +1480,7 @@ function openExpenseForm(expense = null) {
   const fields = ['concert_id', 'category', 'description', 'amount', 'currency', 'expense_type', 'payment_status', 'due_date', 'supplier', 'notes'];
   if (expense) fields.forEach(field => { form.elements[field].value = expense[field] ?? ''; });
   else { form.elements.currency.value = 'PLN'; form.elements.expense_type.value = 'MANDATORY_FUTURE'; form.elements.payment_status.value = 'UNPAID'; }
+  form.elements.include_in_projected_cost.checked = Boolean(expense?.include_in_projected_cost);
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -1481,8 +1489,10 @@ async function saveExpense(event) {
   if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти витрату.')) return;
   const form = event.currentTarget;
   const raw = Object.fromEntries(new FormData(form));
-  const id = raw.id;
+  const id = raw.id, existing = state.expenses.find(expense => expense.id === raw.id);
   const payload = { concert_id: raw.concert_id, category: raw.category.trim().toUpperCase(), description: raw.description.trim(), amount: Number(raw.amount), currency: raw.currency.trim().toUpperCase() || 'PLN', expense_type: raw.expense_type, due_date: raw.due_date || null, payment_status: raw.payment_status, supplier: raw.supplier.trim() || null, notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  if (raw.expense_type === 'OPTIONAL_FUTURE' && form.elements.include_in_projected_cost.checked) payload.include_in_projected_cost = true;
+  if (existing?.include_in_projected_cost && (!form.elements.include_in_projected_cost.checked || raw.expense_type !== 'OPTIONAL_FUTURE')) payload.include_in_projected_cost = false;
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
   byId('expense-form-note').textContent = 'Збереження…';
