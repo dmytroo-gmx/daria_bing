@@ -37,6 +37,8 @@ test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /data-open-detail-document/);
   assert.match(js, /function checklistItem/);
   assert.match(js, /data-detail-action/);
+  assert.match(js, /function breakEvenTickets/);
+  assert.match(js, /concert\.break_even_mode !== 'CALCULATED'/);
   assert.match(js, /data-add-detail-task/);
 });
 
