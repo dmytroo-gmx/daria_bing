@@ -1499,6 +1499,7 @@ function bindEvents() {
   byId('order-concert-filter').addEventListener('change', renderSales);
   byId('order-status-filter').addEventListener('change', renderSales);
   byId('order-attribution-filter').addEventListener('change', renderSales);
+  byId('show-unknown-orders').addEventListener('click', () => { byId('order-attribution-filter').value = 'UNKNOWN'; renderSales(); byId('order-list').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   byId('order-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-order]');
     if (!button) return;
