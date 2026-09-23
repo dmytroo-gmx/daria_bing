@@ -985,7 +985,7 @@ function openCampaignForm(campaign = null) {
 function openCampaignResultForm() {
   if (!requireEditor()) return;
   if (!state.campaigns.length) { setStatus('Сначала добавьте кампанию.', true); showView('channels'); return; }
-  const form = byId('campaign-result-form'); form.reset(); form.hidden = false; byId('campaign-result-note').textContent = '';
+  const form = byId('campaign-result-form'); form.reset(); form.hidden = false; byId('campaign-result-note').textContent = ''; byId('campaign-result-order').hidden = true;
   setSelectOptions('campaign-result-campaign', state.campaigns.map(campaign => `<option value="${esc(campaign.id)}">${esc(campaign.source_code)} · ${esc(campaign.campaign_name)}</option>`).join(''));
   const applyCampaign = () => { const campaign = state.campaigns.find(item => item.id === form.elements.campaign_id.value); if (!campaign) return; form.elements.actual_spend.value = campaign.actual_spend ?? 0; form.elements.entries.value = campaign.entries ?? ''; form.elements.platform_reported_orders.value = campaign.platform_reported_orders ?? ''; form.elements.platform_reported_value.value = campaign.platform_reported_value ?? ''; };
   form.elements.campaign_id.onchange = applyCampaign; applyCampaign(); form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -998,7 +998,26 @@ async function saveCampaignResult(event) {
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-result-note').textContent = 'Сохранение…';
   const result = await db.from('daria_campaigns').update(payload).eq('id', raw.campaign_id); submit.disabled = false;
   if (result.error) { byId('campaign-result-note').textContent = `Ошибка: ${result.error.message}`; return; }
-  form.hidden = true; setStatus('Показатели кампании обновлены'); await Promise.all([loadChannelsModule(), loadReportsModule(), loadOperations()]);
+  byId('campaign-result-note').textContent = 'Показатели сохранены. Если есть подтверждённый заказ, внесите его отдельно.';
+  byId('campaign-result-order').hidden = false;
+  setStatus('Показатели кампании обновлены'); await Promise.all([loadChannelsModule(), loadReportsModule(), loadOperations()]);
+}
+
+async function openConfirmedOrderFromCampaignResult() {
+  if (!requireEditor()) return;
+  const campaignId = byId('campaign-result-form').elements.campaign_id.value;
+  if (!campaignId) return;
+  showView('sales');
+  await loadSalesModule();
+  const campaign = state.campaigns.find(item => item.id === campaignId);
+  if (!campaign) { setStatus('Не удалось найти выбранную кампанию для заказа.', true); return; }
+  openOrderForm();
+  const form = byId('order-form');
+  form.elements.campaign_id.value = campaign.id;
+  form.elements.concert_id.value = campaign.concert_id;
+  form.elements.source_code.value = campaign.source_code || '';
+  form.elements.attribution_type.value = 'CONFIRMED';
+  byId('order-form-note').textContent = 'Кампания и код источника подставлены. Внесите только подтверждённые данные заказа оператора.';
 }
 
 function sourceToken(value, fallback) {
@@ -1474,6 +1493,7 @@ function bindEvents() {
   byId('campaign-form').addEventListener('submit', saveCampaign);
   byId('cancel-campaign-result').addEventListener('click', () => { byId('campaign-result-form').hidden = true; });
   byId('campaign-result-form').addEventListener('submit', saveCampaignResult);
+  byId('campaign-result-order').addEventListener('click', openConfirmedOrderFromCampaignResult);
   byId('campaign-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-campaign]');
     if (button) openCampaignForm(state.campaigns.find(campaign => campaign.id === button.dataset.editCampaign));

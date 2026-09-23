@@ -244,6 +244,14 @@ test('report channel filter scopes headline metrics and concert cards consistent
   assert.match(js, /не относится к выбранному каналу/);
 });
 
+test('campaign results lead to a separate prefilled confirmed order workflow', () => {
+  assert.match(html, /id="campaign-result-order"/);
+  assert.match(js, /async function openConfirmedOrderFromCampaignResult/);
+  assert.match(js, /form\.elements\.campaign_id\.value = campaign\.id/);
+  assert.match(js, /form\.elements\.attribution_type\.value = 'CONFIRMED'/);
+  assert.match(html, /Подтверждённые заказы, билеты и выручка вносятся отдельными заказами/);
+});
+
 test('an authenticated user must have a verified manager role before editing', () => {
   assert.match(js, /daria_user_roles'\)\.select\('role'\)/);
   assert.match(js, /\['ADMIN', 'MANAGER'\]\.includes\(state\.role\)/);
