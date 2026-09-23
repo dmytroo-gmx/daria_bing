@@ -190,7 +190,7 @@ function renderConcerts() {
 
 function attentionTaskTitle(kind) { return { source: 'Привязать файл-источник', snapshot: 'Внести ежедневный срез продаж', edit: 'Указать вместимость площадки' }[kind]; }
 
-function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailable = false, openTaskKeys = new Set()) {
+function renderDashboardAttention(staleSnapshots, sourceMissing = [], unknownOrders = new Map(), unavailable = false, openTaskKeys = new Set()) {
   const target = byId('dashboard-attention');
   if (unavailable) { target.innerHTML = '<div class="empty">Не удалось проверить полноту данных: значения не подменены нулями.</div>'; return; }
   const missingCapacity = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !Number(concert.capacity));
@@ -200,6 +200,7 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unavailabl
       return { concert, text: 'Нет подтверждённого среза продаж за последние два дня.', action: hasSource ? 'snapshot' : 'source', button: hasSource ? 'ДОБАВИТЬ СРЕЗ' : 'ДОБАВИТЬ ФАЙЛ' };
     }),
     ...sourceMissing.map(concert => ({ concert, text: 'Не привязан файл-источник по концерту.', action: 'source', button: 'ДОБАВИТЬ ФАЙЛ' })),
+    ...state.concerts.filter(concert => unknownOrders.has(concert.id)).map(concert => ({ concert, text: `${fmt(unknownOrders.get(concert.id))} заказов без установленного источника.`, action: 'unknown', button: 'ОТКРЫТЬ ЗАКАЗЫ' })),
     ...missingCapacity.map(concert => ({ concert, text: 'Не указана вместимость площадки: заполнение зала не рассчитывается.', action: 'edit', button: 'УКАЗАТЬ МЕСТА' }))
   ];
   target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button>${openTaskKeys.has(`${concert.id}:${attentionTaskTitle(action)}`) ? '' : `<button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button>`}</div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
@@ -472,7 +473,7 @@ async function loadOperations() {
   }
   const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
-    db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status'),
+    db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('concert_id,actual_spend'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
@@ -493,6 +494,8 @@ async function loadOperations() {
   } else state.concerts = concertsResult.data || [];
   state.totals = new Map();
   const paidOrders = ordersResult.error ? [] : (ordersResult.data || []).filter(order => order.status === 'PAID');
+  const unknownOrders = new Map();
+  paidOrders.filter(order => order.attribution_type === 'UNKNOWN').forEach(order => unknownOrders.set(order.concert_id, (unknownOrders.get(order.concert_id) || 0) + 1));
   paidOrders.forEach(order => {
     const total = state.totals.get(order.concert_id) || { tickets: 0, revenue: 0 };
     total.tickets += Number(order.ticket_count) || 0;
@@ -541,7 +544,7 @@ async function loadOperations() {
   const sourceMissing = state.concerts.filter(concert => ['ACTIVE', 'ON_SALE'].includes(concert.status) && !concertSources.has(concert.id));
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
   const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
-  renderDashboardAttention(staleSnapshots, sourceMissing, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys);
+  renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys);
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
   note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: PAID orders, внесені витрати та campaigns.actual_spend. «Без свіжого зрізу» означає відсутність нового підтвердженого звіту для ${fmt(staleSnapshots.length)} активних концертів, а не відсутність продажів.`;
@@ -1464,6 +1467,7 @@ function bindEvents() {
   byId('concerts-list').addEventListener('click', event => {
     const button = event.target.closest('[data-action]');
     if (!button) return;
+    if (button.dataset.action === 'unknown') { showView('sales'); loadSalesModule().then(() => { byId('order-concert-filter').value = button.dataset.id; byId('order-attribution-filter').value = 'UNKNOWN'; renderSales(); }); return; }
     const concert = state.concerts.find(item => item.id === button.dataset.id);
     if (button.dataset.action === 'details') selectConcert(button.dataset.id);
     if (button.dataset.action === 'edit') openConcertForm(concert);
