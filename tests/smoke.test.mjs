@@ -31,6 +31,7 @@ test('concert workspace uses tabbed server-backed detail', () => {
   assert.match(js, /function snapshotTimelines/);
   assert.match(js, /НЕОБЯЗАТЕЛЬНЫЕ РАСХОДЫ/);
   assert.match(js, /ПЛАНОВЫЕ НЕВОЗВРАТНЫЕ РАСХОДЫ/);
+  assert.match(js, /БЛИЖАЙШИЙ ОБЯЗАТЕЛЬНЫЙ ПЛАТЁЖ/);
   assert.match(js, /data-open-detail-document/);
   assert.match(js, /function checklistItem/);
   assert.match(js, /data-detail-action/);
