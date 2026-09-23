@@ -477,7 +477,7 @@ async function loadOperations() {
     db.from('daria_campaigns').select('concert_id,actual_spend'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
-    db.from('daria_documents').select('concert_id'),
+    db.from('daria_source_documents').select('concert_id'),
     db.from('daria_operational_tasks').select('concert_id,title,task_status')
   ]);
   const errors = [];

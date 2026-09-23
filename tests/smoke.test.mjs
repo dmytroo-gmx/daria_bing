@@ -67,6 +67,7 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
   assert.match(html, /id="m-stale"/);
   assert.match(html, /id="dashboard-attention"/);
+  assert.match(js, /daria_source_documents'\)\.select\('concert_id'\)/);
   assert.match(js, /daily snapshots/);
   assert.match(js, /function renderDashboardAttention/);
   assert.match(js, /function attentionTaskTitle/);
