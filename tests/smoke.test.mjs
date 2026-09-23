@@ -120,6 +120,8 @@ test('finance keeps expense classes and currencies separate', () => {
   assert.match(js, /function currencyTotals/);
   assert.match(js, /daria_expenses'\)\.select\('\*'\)/);
   assert.match(js, /payment_status === 'PAID'/);
+  assert.match(js, /label\('expenseType', expense\.expense_type\)/);
+  assert.match(js, /label\('paymentStatus', expense\.payment_status\)/);
   assert.doesNotMatch(js, /reduce\([^\n]+currency[^\n]+amount/);
 });
 
