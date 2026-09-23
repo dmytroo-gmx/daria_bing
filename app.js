@@ -1349,8 +1349,8 @@ function bookingValue(id) {
 
 function renderBooking() {
   byId('booking-list').innerHTML = bookingConcerts.map(concert => `<article class="booking-card"><div class="booking-head"><div><p>${concert.date} · ${concert.city}</p><h2>${concert.title}</h2><small>${concert.venue}</small></div><button class="text-button" type="button" data-clear-booking="${concert.id}">ОЧИСТИТИ</button></div><div class="operators">${bookingOperators.map(([id, name, note]) => `<label class="operator"><b>${name}</b><small>${note}</small><div class="field"><input id="${concert.id}-${id}" inputmode="numeric" pattern="[0-9]*" placeholder="0"><span>квитків</span></div></label>`).join('')}</div><div class="booking-summary"><div><span>ПРОДАНО</span><strong id="${concert.id}-sold">0</strong><small>із ${fmt(concert.capacity)} місць</small></div><div><span>ДО BREAK-EVEN</span><strong id="${concert.id}-break">${fmt(concert.breakEven)}</strong><small>орієнтир ${concert.breakEven}</small></div><div><span>ДО SOLD OUT</span><strong id="${concert.id}-soldout">${fmt(concert.capacity)}</strong><small>повна місткість</small></div></div></article>`).join('');
-  document.querySelectorAll('.field input').forEach(input => input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, ''); calculateBooking(); setStatus('Є незбережені booking-зміни'); }));
-  document.querySelectorAll('[data-clear-booking]').forEach(button => button.addEventListener('click', () => { bookingOperators.forEach(([operator]) => byId(`${button.dataset.clearBooking}-${operator}`).value = ''); calculateBooking(); setStatus('Є незбережені booking-зміни'); }));
+  document.querySelectorAll('.field input').forEach(input => input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, ''); calculateBooking(); setStatus('Есть несохранённые изменения старой сводки.'); }));
+  document.querySelectorAll('[data-clear-booking]').forEach(button => button.addEventListener('click', () => { bookingOperators.forEach(([operator]) => byId(`${button.dataset.clearBooking}-${operator}`).value = ''); calculateBooking(); setStatus('Есть несохранённые изменения старой сводки.'); }));
 }
 
 function calculateBooking() {
@@ -1373,20 +1373,20 @@ function bookingRow() {
 
 async function loadBooking() {
   const { data, error } = await db.from('booking_sales').select('*').eq('id', 1).single();
-  if (error) { setStatus(`Booking не завантажено: ${error.message}`, true); return; }
+  if (error) { setStatus(`Старая сводка не загружена: ${error.message}`, true); return; }
   bookingConcerts.forEach(concert => bookingOperators.forEach(([operator]) => { byId(`${concert.id}-${operator}`).value = data[`${concert.id}_${operator}`] ?? ''; }));
   calculateBooking();
-  setStatus('Booking синхронізовано зі спільною базою');
+  setStatus('Старая сводка синхронизирована с общей базой.');
 }
 
 async function saveBooking() {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти booking.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить старую сводку.')) return;
   const button = byId('save-booking');
   button.disabled = true;
-  setStatus('Збереження booking…');
+  setStatus('Сохранение старой сводки…');
   const { error } = await db.from('booking_sales').update(bookingRow()).eq('id', 1);
   button.disabled = false;
-  setStatus(error ? `Booking не збережено: ${error.message}` : 'Booking збережено для всієї команди', Boolean(error));
+  setStatus(error ? `Старая сводка не сохранена: ${error.message}` : 'Старая сводка сохранена для всей команды.', Boolean(error));
 }
 
 function ensureCampaignDeliveryFields() {
@@ -1572,7 +1572,7 @@ async function init() {
   db.channel('booking-sales-live').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'booking_sales', filter: 'id=eq.1' }, payload => {
     bookingConcerts.forEach(concert => bookingOperators.forEach(([operator]) => { byId(`${concert.id}-${operator}`).value = payload.new[`${concert.id}_${operator}`] ?? ''; }));
     calculateBooking();
-    setStatus('Booking оновлено командою');
+    setStatus('Старая сводка обновлена командой.');
   }).subscribe();
   await Promise.all([loadOperations(), loadBooking()]);
 }
