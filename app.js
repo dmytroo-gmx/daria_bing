@@ -1418,7 +1418,10 @@ function bindEvents() {
   });
   byId('add-campaign').addEventListener('click', () => openCampaignForm());
   byId('cancel-campaign').addEventListener('click', () => { byId('campaign-form').hidden = true; });
-  ['concert_id', 'channel_id', 'campaign_name'].forEach(name => byId('campaign-form').elements[name].addEventListener('change', () => { if (!byId('campaign-form').elements.source_code.value.trim()) generateCampaignSourceCode(); }));
+  ['concert_id', 'channel_id', 'campaign_name'].forEach(name => {
+    const field = byId('campaign-form').elements[name];
+    ['change', 'input'].forEach(eventName => field.addEventListener(eventName, () => { if (!byId('campaign-form').elements.source_code.value.trim()) generateCampaignSourceCode(); }));
+  });
   byId('campaign-form').addEventListener('submit', saveCampaign);
   byId('campaign-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-campaign]');

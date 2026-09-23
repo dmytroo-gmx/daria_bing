@@ -125,6 +125,7 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /daria_tracking_links'\)\.select\('\*'\)/);
   assert.match(html, /Билетный оператор создаёт статистическую ссылку/);
   assert.match(js, /Заказы по данным рекламной платформы не добавляются/);
+  assert.match(js, /\['change', 'input'\]/);
   assert.match(js, /план \$\{money\(planned, currency\)\}/);
   assert.match(js, /ПЛАТФОРМА:/);
   assert.match(js, /ПОДТВЕРЖДЕНО:/);
