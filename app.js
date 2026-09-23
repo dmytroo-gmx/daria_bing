@@ -1056,7 +1056,17 @@ function openTrackingForm(link = null) {
   byId('tracking-form-mode').textContent = link ? 'РЕДАКТИРОВАНИЕ ССЫЛКИ' : 'НОВАЯ ССЫЛКА'; byId('tracking-form-title').textContent = link ? link.source_code : 'Добавить ссылку'; byId('tracking-form-note').textContent = ''; form.elements.id.value = link?.id || '';
   const fields = ['concert_id', 'campaign_id', 'operator_id', 'channel_id', 'source_code', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code', 'status', 'notes'];
   if (link) fields.forEach(field => { form.elements[field].value = link[field] ?? ''; });
-  else form.elements.status.value = 'ACTIVE';
+  else {
+    form.elements.status.value = 'ACTIVE';
+    form.elements.campaign_id.onchange = () => {
+      const campaign = state.campaigns.find(item => item.id === form.elements.campaign_id.value);
+      if (!campaign) return;
+      form.elements.concert_id.value = campaign.concert_id;
+      form.elements.channel_id.value = campaign.channel_id;
+      form.elements.source_code.value = campaign.source_code;
+      if (!form.elements.utm_campaign.value) form.elements.utm_campaign.value = campaign.source_code;
+    };
+  }
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
