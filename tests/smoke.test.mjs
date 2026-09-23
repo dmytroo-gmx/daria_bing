@@ -65,7 +65,7 @@ test('concerts support create, edit, detail, filters and all schema statuses', (
 
 test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /ticket_count,gross_revenue,status/);
-  assert.match(js, /daria_campaigns'\)\.select\('concert_id,actual_spend'\)/);
+  assert.match(js, /daria_campaigns'\)\.select\('id,concert_id,actual_spend'\)/);
   assert.match(js, /campaignSpend\.forEach\(\(amount, currency\) => operationalResult\.set/);
   assert.match(js, /function formatCurrencyMap/);
   assert.match(js, /ОПЕРАЦИОННЫЙ ОСТАТОК: \$\{money\(projectedResult, currency\)\}/);
@@ -73,7 +73,7 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /function dashboardPeriodConcerts/);
   assert.match(js, /const dashboardPaidOrders = paidOrders\.filter/);
   assert.match(js, /dashboard-period.*loadOperations/);
-  assert.match(js, /Факт: оплаченные заказы, внесённые расходы и фактические расходы кампаний/);
+  assert.match(js, /Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов/);
   assert.match(js, /БЛИЖАЙШИЙ ПЛАТЁЖ/);
   assert.doesNotMatch(js, /quantity,gross_amount/);
   assert.equal((js.match(/async function loadOperations/g) || []).length, 1);
@@ -240,12 +240,12 @@ test('verified starter records do not invent sales or overwrite entered operator
 
 test('reports label platform and confirmed attribution separately', () => {
   assert.match(html, /id="report-list"/);
-  assert.match(js, /СТОИМОСТЬ ЗАКАЗА ПО ПЛАТФОРМЕ/);
+  assert.match(js, /СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА/);
   assert.match(js, /СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА/);
   assert.match(js, /campaignOrders\.length/);
   assert.match(js, /order\.attribution_type === 'CONFIRMED'/);
   assert.match(js, /const currency = concert\.currency \|\| 'PLN'/);
-  assert.match(js, /ОКУПАЕМОСТЬ ПО ПЛАТФОРМЕ/);
+  assert.match(js, /ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ/);
   assert.match(js, /async function loadReportsModule/);
   assert.match(js, /Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются/);
   assert.match(js, /daria_channel_metrics/);
@@ -257,7 +257,7 @@ test('reports label platform and confirmed attribution separately', () => {
   assert.match(js, /function populateReportFilters\(concerts, metrics\)/);
   assert.match(js, /channelId !== 'ALL'/);
   assert.match(js, /function concertChannelPerformance/);
-  assert.match(js, /Подтверждённые показатели основаны только на оплаченных заказах/);
+  assert.match(js, /Подтверждённые показатели основаны на оплаченных заказах с подтверждённым источником либо на последнем итоговом отчёте оператора/);
 });
 
 test('reports can be saved through the browser PDF workflow', () => {
@@ -283,6 +283,18 @@ test('campaign results lead to a separate prefilled confirmed order workflow', (
   assert.match(js, /form\.elements\.campaign_id\.value = campaign\.id/);
   assert.match(js, /form\.elements\.attribution_type\.value = 'CONFIRMED'/);
   assert.match(html, /Подтверждённые заказы, билеты и выручка вносятся отдельными заказами/);
+});
+
+test('operator report totals stay source-backed and do not duplicate paid orders', async () => {
+  const reportMigration = await readFile(new URL('../supabase/migrations/0014_campaign_confirmed_operator_reports.sql', import.meta.url), 'utf8');
+  assert.match(html, /id="campaign-confirmed-report-form"/);
+  assert.match(js, /async function saveCampaignConfirmedReport/);
+  assert.match(js, /daria_campaign_confirmed_reports/);
+  assert.match(reportMigration, /source_document_id uuid not null/);
+  assert.match(reportMigration, /unique\(campaign_id, reported_on\)/);
+  assert.match(reportMigration, /not exists \(select 1 from public\.daria_orders order_row where order_row\.campaign_id = campaign\.id and order_row\.status = 'PAID'\)/);
+  assert.match(reportMigration, /create or replace function public\.daria_concert_metrics/);
+  assert.match(reportMigration, /create or replace function public\.daria_channel_metrics/);
 });
 
 test('an authenticated user must have a verified manager role before editing', () => {

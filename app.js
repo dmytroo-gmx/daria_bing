@@ -25,7 +25,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -258,7 +258,7 @@ function checklistItem(done, title, copy, action = '') {
   return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОДАТИ ДЖЕРЕЛО' : 'ДОДАТИ ЗРІЗ'}</button>` : ''}</span></div>`;
 }
 
-function concertChannelPerformance(campaigns, orders, channels, currency) {
+function concertChannelPerformance(campaigns, orders, channels, currency, confirmedReports = []) {
   const channelById = new Map(channels.map(channel => [channel.id, channel.name]));
   const grouped = new Map();
   campaigns.forEach(campaign => {
@@ -266,10 +266,12 @@ function concertChannelPerformance(campaigns, orders, channels, currency) {
     const row = grouped.get(key) || { name: channelById.get(campaign.channel_id) || 'Канал не указан', spend: 0, platformOrders: 0, confirmedOrders: 0, tickets: 0, revenue: 0 };
     row.spend += Number(campaign.actual_spend) || 0;
     row.platformOrders += Number(campaign.platform_reported_orders) || 0;
-    const confirmed = orders.filter(order => order.campaign_id === campaign.id && order.status === 'PAID' && order.attribution_type === 'CONFIRMED');
-    row.confirmedOrders += confirmed.length;
-    row.tickets += confirmed.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
-    row.revenue += confirmed.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
+    const paid = orders.filter(order => order.campaign_id === campaign.id && order.status === 'PAID');
+    const confirmed = paid.filter(order => order.attribution_type === 'CONFIRMED');
+    const latestReport = !paid.length ? confirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`))[0] : null;
+    row.confirmedOrders += latestReport ? Number(latestReport.confirmed_orders) || 0 : confirmed.length;
+    row.tickets += latestReport ? Number(latestReport.confirmed_tickets) || 0 : confirmed.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
+    row.revenue += latestReport ? Number(latestReport.confirmed_revenue) || 0 : confirmed.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
     grouped.set(key, row);
   });
   const rows = [...grouped.values()].sort((a, b) => b.tickets - a.tickets || b.spend - a.spend).map(row => `<tr><td><b>${esc(row.name)}</b></td><td>${money(row.spend, currency)}</td><td>${fmt(row.platformOrders)}<br><small>по данным платформы</small></td><td>${fmt(row.confirmedOrders)}</td><td>${fmt(row.tickets)}</td><td>${money(row.revenue, currency)}</td><td>${ratio(row.spend, row.tickets, ` ${currency}`)}</td><td>${ratio(row.revenue, row.spend, '×')}</td></tr>`);
@@ -295,7 +297,7 @@ function renderConcertDetail() {
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)} · ${esc(label('attribution', order.attribution_type))}</span></div>`).join('') || '<div class="empty">Записей ещё нет.</div>'; }
   if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОБАВИТЬ ЕЖЕДНЕВНЫЙ СРЕЗ</button><div class="truth-note">Изменение считается только между двумя последними срезами одного оператора и одной валюты. Разных операторов здесь не складываем.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не указан')} · по состоянию на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} бил. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · изменение: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} бил.${change.revenueDelta == null ? ' · другая валюта — без изменения выручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · предыдущего среза ещё нет'} · ${esc(change.latest.source_name || 'источник не привязан')}</span></div>`).join('') || '<div class="empty">Ежедневных срезов ещё нет.</div>'}${snapshotTimelines(detail.snapshots)}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не указан'} · ${snapshot.source_name || 'источник не привязан'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
   if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата джерела не задана')} · ${esc(document.import_status)}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ВІДКРИТИ</button></span></div>`).join('') || '<div class="empty">До цього концерту ще не прив’язано PDF або CSV-джерел.</div>';
-  if (state.detailTab === 'CHANNELS') content = `<div class="truth-note">Подтверждённые показатели основаны только на оплаченных заказах с подтверждённым источником. Показатели рекламной платформы показаны отдельно.</div><div class="csv-table">${concertChannelPerformance(detail.campaigns, detail.orders, detail.channels || [], concert.currency || 'PLN')}</div>`;
+  if (state.detailTab === 'CHANNELS') content = `<div class="truth-note">Подтверждённые показатели основаны на оплаченных заказах с подтверждённым источником либо на последнем итоговом отчёте оператора, если заказов по кампании нет. Показатели рекламной платформы показаны отдельно.</div><div class="csv-table">${concertChannelPerformance(detail.campaigns, detail.orders, detail.channels || [], concert.currency || 'PLN', detail.confirmedReports || [])}</div>`;
   if (state.detailTab === 'FINANCE') content = detail.expenses.map(expense => `<div class="detail-line"><b>${esc(expense.description || expense.category)}</b><span>${esc(label('expenseType', expense.expense_type))} · ${esc(label('paymentStatus', expense.payment_status))} · ${money(expense.amount, expense.currency)}</span></div>`).join('') || '<div class="empty">Расходов ещё нет.</div>';
   if (state.detailTab === 'TRACKING') content = detail.links.map(link => `<div class="detail-line"><b>${esc(link.source_code)}</b><span>${esc(link.destination_url || link.statistical_url || 'Ссылка не задана')}</span></div>`).join('') || '<div class="empty">Ссылок для отслеживания ещё нет.</div>';
   if (state.detailTab === 'NOTES') content = `<div class="detail-notes">${esc(concert.notes || 'Заметок нет.')}</div>`;
@@ -322,8 +324,8 @@ async function selectConcert(id) {
   state.detail = null; renderConcertDetail(); renderConcerts();
   const fallback = state.totals.get(id) || { tickets: 0, revenue: 0 };
   if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], tasks: [], expenses: [], campaigns: [], channels: [], links: [] }; renderConcertDetail(); return; }
-  const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult, tasksResult, channelsResult] = await Promise.all([
-    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false }), db.from('daria_sales_channels').select('id,name')
+  const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult, tasksResult, channelsResult, reportsResult] = await Promise.all([
+    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false }), db.from('daria_sales_channels').select('id,name'), db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false })
   ]);
   const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
   const allDocuments = documentsResult.data || [];
@@ -337,7 +339,7 @@ async function selectConcert(id) {
   ]);
   const actorNames = new Map((profilesResult.data || []).map(profile => [profile.user_id, profile.display_name]));
   const audit = (auditResult.data || []).map(entry => ({ ...entry, actor_name: actorNames.get(entry.user_id) || '' }));
-  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, tasks: tasksResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], channels: channelsResult.data || [], links: linksResult.data || [], audit, auditError: auditResult.error };
+  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, tasks: tasksResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], channels: channelsResult.data || [], links: linksResult.data || [], confirmedReports: reportsResult.error ? [] : reportsResult.data || [], audit, auditError: auditResult.error };
   renderConcertDetail();
   renderConcerts();
 }
@@ -493,14 +495,15 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
-    db.from('daria_orders').select('concert_id,ticket_count,gross_revenue,status,attribution_type'),
-    db.from('daria_campaigns').select('concert_id,actual_spend'),
+    db.from('daria_orders').select('concert_id,campaign_id,ticket_count,gross_revenue,status,attribution_type'),
+    db.from('daria_campaigns').select('id,concert_id,actual_spend'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
     db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
     db.from('daria_source_documents').select('concert_id'),
-    db.from('daria_operational_tasks').select('concert_id,title,task_status')
+    db.from('daria_operational_tasks').select('concert_id,title,task_status'),
+    db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
@@ -516,6 +519,10 @@ async function loadOperations() {
   } else state.concerts = concertsResult.data || [];
   state.totals = new Map();
   const paidOrders = ordersResult.error ? [] : (ordersResult.data || []).filter(order => order.status === 'PAID');
+  const confirmedReports = reportsResult.error ? [] : reportsResult.data || [];
+  const paidCampaignIds = new Set(paidOrders.map(order => order.campaign_id).filter(Boolean));
+  const latestReports = new Map();
+  confirmedReports.forEach(report => { if (!paidCampaignIds.has(report.campaign_id) && (!latestReports.has(report.campaign_id) || `${report.reported_on}${report.created_at}` > `${latestReports.get(report.campaign_id).reported_on}${latestReports.get(report.campaign_id).created_at}`)) latestReports.set(report.campaign_id, report); });
   const dashboardConcerts = dashboardPeriodConcerts(state.concerts);
   const dashboardConcertIds = new Set(dashboardConcerts.map(concert => concert.id));
   const dashboardPaidOrders = paidOrders.filter(order => dashboardConcertIds.has(order.concert_id));
@@ -526,6 +533,13 @@ async function loadOperations() {
     total.tickets += Number(order.ticket_count) || 0;
     total.revenue += Number(order.gross_revenue) || 0;
     state.totals.set(order.concert_id, total);
+  });
+  (campaignsResult.data || []).forEach(campaign => {
+    const report = latestReports.get(campaign.id); if (!report) return;
+    const total = state.totals.get(campaign.concert_id) || { tickets: 0, revenue: 0 };
+    total.tickets += Number(report.confirmed_tickets) || 0;
+    total.revenue += Number(report.confirmed_revenue) || 0;
+    state.totals.set(campaign.concert_id, total);
   });
   state.concertFinance = new Map(state.concerts.map(concert => [concert.id, { marketing: new Map(), mandatory: new Map(), alreadySpent: new Map(), nextMandatory: null }]));
   (campaignsResult.data || []).forEach(campaign => {
@@ -545,8 +559,10 @@ async function loadOperations() {
     finance.alreadySpent.set(currency, (finance.alreadySpent.get(currency) || 0) + (Number(expense.amount) || 0));
   });
   byId('m-active').textContent = concertsResult.error ? '!' : dashboardConcerts.length;
-  byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(dashboardPaidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
-  byId('m-revenue').textContent = ordersResult.error ? '!' : currencyTotals(dashboardPaidOrders, 'gross_revenue');
+  const dashboardReports = (campaignsResult.data || []).filter(campaign => dashboardConcertIds.has(campaign.concert_id)).map(campaign => latestReports.get(campaign.id)).filter(Boolean);
+  byId('m-tickets').textContent = ordersResult.error ? '!' : fmt(dashboardPaidOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + dashboardReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
+  const dashboardRevenue = amountMap(dashboardPaidOrders, 'gross_revenue'); dashboardReports.forEach(report => dashboardRevenue.set(report.currency || 'PLN', (dashboardRevenue.get(report.currency || 'PLN') || 0) + (Number(report.confirmed_revenue) || 0)));
+  byId('m-revenue').textContent = ordersResult.error ? '!' : formatCurrencyMap(dashboardRevenue);
   const campaignSpend = new Map();
   (campaignsResult.data || []).filter(campaign => dashboardConcertIds.has(campaign.concert_id)).forEach(campaign => {
     const currency = state.concerts.find(concert => concert.id === campaign.concert_id)?.currency || 'PLN';
@@ -555,7 +571,7 @@ async function loadOperations() {
   byId('m-spend').textContent = campaignsResult.error ? '!' : formatCurrencyMap(campaignSpend);
   const mandatory = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
   const paid = expensesResult.error ? [] : (expensesResult.data || []).filter(expense => dashboardConcertIds.has(expense.concert_id) && expense.expense_type === 'ALREADY_PAID' && expense.payment_status === 'PAID');
-  const operationalResult = amountMap(dashboardPaidOrders, 'gross_revenue');
+  const operationalResult = new Map(dashboardRevenue);
   [paid, mandatory].forEach(items => items.forEach(item => {
     const currency = item.currency || 'PLN';
     operationalResult.set(currency, (operationalResult.get(currency) || 0) - (Number(item.amount) || 0));
@@ -578,7 +594,7 @@ async function loadOperations() {
   renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys, dashboardConcerts);
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
-  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : `Факт: оплаченные заказы, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
+  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : reportsResult.error ? `Итоги операторов станут доступны после применения следующей миграции базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
   if (!concertsResult.error) renderConcerts();
 }
 
@@ -930,12 +946,16 @@ function renderChannels() {
     const deltaLabel = delta === 0 ? 'по плану' : delta > 0 ? `+${money(delta, currency)} сверх плана` : `${money(Math.abs(delta), currency)} не использовано`;
     const latestImport = state.csvImports.find(item => item.campaign_id === campaign.id);
     const importNote = latestImport ? ` · выгрузка Meta: ${new Date(latestImport.applied_at).toLocaleDateString('ru-RU')} · проверено ${fmt(latestImport.rows_reviewed)} строк` : ' · выгрузка Meta ещё не применялась';
-    const confirmed = state.campaignOrders.filter(order => order.campaign_id === campaign.id && order.status === 'PAID' && order.attribution_type === 'CONFIRMED');
-    const confirmedTickets = confirmed.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
-    const confirmedRevenue = confirmed.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
+    const paidForCampaign = state.campaignOrders.filter(order => order.campaign_id === campaign.id && order.status === 'PAID');
+    const confirmed = paidForCampaign.filter(order => order.attribution_type === 'CONFIRMED');
+    const latestReport = !paidForCampaign.length ? state.campaignConfirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`))[0] : null;
+    const confirmedOrders = latestReport ? Number(latestReport.confirmed_orders) || 0 : confirmed.length;
+    const confirmedTickets = latestReport ? Number(latestReport.confirmed_tickets) || 0 : confirmed.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
+    const confirmedRevenue = latestReport ? Number(latestReport.confirmed_revenue) || 0 : confirmed.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
     const entries = Number(campaign.entries) || 0, impressions = Number(campaign.platform_impressions) || 0, reach = Number(campaign.platform_reach) || 0, linkClicks = Number(campaign.platform_link_clicks) || 0;
     const delivery = impressions || reach || linkClicks ? `<span>ОХВАТ: ${fmt(reach)} · ПОКАЗЫ: ${fmt(impressions)} · ПЕРЕХОДЫ: ${fmt(linkClicks)}${linkClicks && impressions ? ` · доля переходов ${ratio(linkClicks * 100, impressions, '%')}` : ''}${campaign.platform_metrics_updated_at ? ` · обновлено ${dateLabel(campaign.platform_metrics_updated_at.slice(0, 10))}` : ''}</span>` : '';
-    return `<article class="ops-concert"><div><small>${esc(label('campaignStatus', campaign.status))} · ${esc(label('attributionQuality', campaign.attribution_quality))} · ${esc(channel?.name || 'канал не указан')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не указан')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel}${importNote}</small><div class="campaign-metrics">${delivery}<span>ПЛАТФОРМА: ${fmt(platformOrders)} заказов${platformOrders ? ` · ${money(actual / platformOrders, currency)} за заказ` : ''}</span><span>ПОДТВЕРЖДЕНО: ${fmt(confirmed.length)} заказов · ${fmt(confirmedTickets)} билетов · ${money(confirmedRevenue, currency)}</span><span>СТОИМОСТЬ: заказ ${ratio(actual, confirmed.length, ` ${currency}`)} · билет ${ratio(actual, confirmedTickets, ` ${currency}`)} · окупаемость ${ratio(confirmedRevenue, actual, '×')}</span><span>СРЕДНЕЕ ЧИСЛО БИЛЕТОВ В ЗАКАЗЕ: ${ratio(confirmedTickets, confirmed.length)}</span>${entries ? `<span>КОНВЕРСИЯ ПЕРЕХОД → ЗАКАЗ: ${ratio(confirmed.length * 100, entries, '%')} · ПЕРЕХОД → БИЛЕТ: ${ratio(confirmedTickets * 100, entries, '%')}</span>` : ''}</div></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">ИЗМЕНИТЬ</button></article>`;
+    const confirmationSource = latestReport ? `итог оператора · ${dateLabel(latestReport.reported_on)}` : 'отдельные заказы';
+    return `<article class="ops-concert"><div><small>${esc(label('campaignStatus', campaign.status))} · ${esc(label('attributionQuality', campaign.attribution_quality))} · ${esc(channel?.name || 'канал не указан')}</small><h3>${esc(campaign.campaign_name)}</h3><small>${esc(concert?.event_name || 'концерт не указан')} · план ${money(planned, currency)} · факт ${money(actual, currency)} · ${deltaLabel}${importNote}</small><div class="campaign-metrics">${delivery}<span>ПЛАТФОРМА: ${fmt(platformOrders)} заказов${platformOrders ? ` · ${money(actual / platformOrders, currency)} за заказ` : ''}</span><span>ПОДТВЕРЖДЕНО: ${fmt(confirmedOrders)} заказов · ${fmt(confirmedTickets)} билетов · ${money(confirmedRevenue, currency)} · ${confirmationSource}</span><span>СТОИМОСТЬ: заказ ${ratio(actual, confirmedOrders, ` ${currency}`)} · билет ${ratio(actual, confirmedTickets, ` ${currency}`)} · окупаемость ${ratio(confirmedRevenue, actual, '×')}</span><span>СРЕДНЕЕ ЧИСЛО БИЛЕТОВ В ЗАКАЗЕ: ${ratio(confirmedTickets, confirmedOrders)}</span>${entries ? `<span>КОНВЕРСИЯ ПЕРЕХОД → ЗАКАЗ: ${ratio(confirmedOrders * 100, entries, '%')} · ПЕРЕХОД → БИЛЕТ: ${ratio(confirmedTickets * 100, entries, '%')}</span>` : ''}</div></div><button class="text-button" type="button" data-edit-campaign="${esc(campaign.id)}">ИЗМЕНИТЬ</button></article>`;
   }).join('') || '<div class="empty">Кампаний ещё нет.</div>';
   byId('tracking-link-list').innerHTML = state.trackingLinks.map(link => {
     const campaign = state.campaigns.find(item => item.id === link.campaign_id);
@@ -955,17 +975,18 @@ async function loadChannelsModule() {
     byId('campaign-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы загрузить кампании.</div>';
     byId('tracking-link-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы загрузить ссылки.</div>';
     byId('channels-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не означает отсутствия кампаний.';
-    state.channels = []; state.campaigns = []; state.campaignOrders = []; state.trackingLinks = []; state.csvImports = [];
+    state.channels = []; state.campaigns = []; state.campaignOrders = []; state.campaignConfirmedReports = []; state.trackingLinks = []; state.csvImports = [];
     return;
   }
   if (!state.concerts.length) await loadOperations();
-  const [channelsResult, campaignsResult, linksResult, operatorsResult, importsResult, ordersResult] = await Promise.all([
+  const [channelsResult, campaignsResult, linksResult, operatorsResult, importsResult, ordersResult, reportsResult] = await Promise.all([
     db.from('daria_sales_channels').select('*').order('name'),
     db.from('daria_campaigns').select('*').order('start_date', { ascending: false, nullsFirst: false }),
     db.from('daria_tracking_links').select('*').order('created_at', { ascending: false }),
     db.from('daria_ticketing_operators').select('id,name').order('name'),
     db.from('daria_csv_imports').select('campaign_id,rows_reviewed,applied_at').eq('import_kind', 'META_CSV').order('applied_at', { ascending: false }),
-    db.from('daria_orders').select('campaign_id,ticket_count,gross_revenue,currency,status,attribution_type')
+    db.from('daria_orders').select('campaign_id,ticket_count,gross_revenue,currency,status,attribution_type'),
+    db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false })
   ]);
   const errors = [channelsResult.error && `channels: ${channelsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, linksResult.error && `links: ${linksResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, importsResult.error && `Meta imports: ${importsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`].filter(Boolean);
   if (errors.length) {
@@ -976,13 +997,14 @@ async function loadChannelsModule() {
   state.channels = channelsResult.data || [];
   state.campaigns = campaignsResult.data || [];
   state.campaignOrders = ordersResult.data || [];
+  state.campaignConfirmedReports = reportsResult.error ? [] : reportsResult.data || [];
   state.trackingLinks = linksResult.data || [];
   state.operators = operatorsResult.data || state.operators;
   state.csvImports = importsResult.data || [];
   populateChannelOptions();
   renderChannels();
   byId('channels-note').classList.remove('error');
-  byId('channels-note').textContent = 'Заказы по данным рекламной платформы не добавляются к подтверждённым продажам автоматически. Если применена выгрузка Meta, карточка кампании показывает дату и количество проверенных строк.';
+  byId('channels-note').textContent = reportsResult.error ? 'Итоги операторов станут доступны после применения следующей миграции базы. Заказы по данным рекламной платформы не добавляются к подтверждённым продажам автоматически.' : 'Заказы по данным рекламной платформы не добавляются к подтверждённым продажам автоматически. Подтверждённый итог оператора применяется только там, где нет оплаченных заказов этой кампании.';
 }
 
 function openChannelForm(channel = null) {
@@ -1020,7 +1042,7 @@ function openCampaignForm(campaign = null) {
 function openCampaignResultForm() {
   if (!requireEditor()) return;
   if (!state.campaigns.length) { setStatus('Сначала добавьте кампанию.', true); showView('channels'); return; }
-  const form = byId('campaign-result-form'); form.reset(); form.hidden = false; byId('campaign-result-note').textContent = ''; byId('campaign-result-order').hidden = true;
+  const form = byId('campaign-result-form'); form.reset(); form.hidden = false; byId('campaign-result-note').textContent = ''; byId('campaign-result-order').hidden = true; byId('campaign-result-report').hidden = true;
   setSelectOptions('campaign-result-campaign', state.campaigns.map(campaign => `<option value="${esc(campaign.id)}">${esc(campaign.source_code)} · ${esc(campaign.campaign_name)}</option>`).join(''));
   const applyCampaign = () => { const campaign = state.campaigns.find(item => item.id === form.elements.campaign_id.value); if (!campaign) return; form.elements.actual_spend.value = campaign.actual_spend ?? 0; form.elements.entries.value = campaign.entries ?? ''; form.elements.platform_reported_orders.value = campaign.platform_reported_orders ?? ''; form.elements.platform_reported_value.value = campaign.platform_reported_value ?? ''; };
   form.elements.campaign_id.onchange = applyCampaign; applyCampaign(); form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1034,9 +1056,40 @@ async function saveCampaignResult(event) {
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-result-note').textContent = 'Сохранение…';
   const result = await db.from('daria_campaigns').update(payload).eq('id', raw.campaign_id); submit.disabled = false;
   if (result.error) { byId('campaign-result-note').textContent = `Ошибка: ${result.error.message}`; return; }
-  byId('campaign-result-note').textContent = 'Показатели сохранены. Если есть подтверждённый заказ, внесите его отдельно.';
+  byId('campaign-result-note').textContent = 'Показатели сохранены. Подтверждённые продажи вносятся отдельно.';
   byId('campaign-result-order').hidden = false;
+  byId('campaign-result-report').hidden = false;
   setStatus('Показатели кампании обновлены'); await Promise.all([loadChannelsModule(), loadReportsModule(), loadOperations()]);
+}
+
+async function openCampaignConfirmedReportForm() {
+  if (!requireEditor()) return;
+  const campaignId = byId('campaign-result-form').elements.campaign_id.value;
+  const campaign = state.campaigns.find(item => item.id === campaignId);
+  if (!campaign) return;
+  const paidOrders = state.campaignOrders.filter(order => order.campaign_id === campaignId && order.status === 'PAID');
+  if (paidOrders.length) { setStatus('У этой кампании уже есть оплаченные заказы. Внесите или исправьте их, а не общий итог, чтобы не было двойного учёта.', true); return; }
+  const documentsResult = await db.from('daria_source_documents').select('id,concert_id,source_name,source_date,document_type').or(`concert_id.eq.${campaign.concert_id},concert_id.is.null`).order('source_date', { ascending: false, nullsFirst: false });
+  if (documentsResult.error) { setStatus(`Не удалось загрузить документы-источники: ${documentsResult.error.message}`, true); return; }
+  const documents = documentsResult.data || [];
+  if (!documents.length) { setStatus('Сначала загрузите PDF или CSV-отчёт оператора: общий итог без документа-источника не сохраняется.', true); showView('documents'); return; }
+  const form = byId('campaign-confirmed-report-form'); form.reset(); form.hidden = false;
+  form.elements.campaign_id.value = campaign.id; form.elements.reported_on.value = new Date().toISOString().slice(0, 10); form.elements.currency.value = state.concerts.find(item => item.id === campaign.concert_id)?.currency || 'PLN';
+  byId('campaign-confirmed-report-campaign-name').value = `${campaign.source_code} · ${campaign.campaign_name}`;
+  setSelectOptions('campaign-confirmed-report-source', documents.map(document => `<option value="${esc(document.id)}">${esc(document.source_name)} · ${esc(document.source_date || 'дата не указана')}</option>`).join(''));
+  byId('campaign-confirmed-report-note').textContent = ''; form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveCampaignConfirmedReport(event) {
+  event.preventDefault(); if (!requireEditor()) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const paidOrders = state.campaignOrders.filter(order => order.campaign_id === raw.campaign_id && order.status === 'PAID');
+  if (paidOrders.length) { byId('campaign-confirmed-report-note').textContent = 'Сохранение остановлено: у кампании уже есть оплаченные заказы. Общий итог создал бы двойной учёт.'; return; }
+  const payload = { campaign_id: raw.campaign_id, reported_on: raw.reported_on, source_document_id: raw.source_document_id, confirmed_orders: Number(raw.confirmed_orders), confirmed_tickets: Number(raw.confirmed_tickets), confirmed_revenue: Number(raw.confirmed_revenue), currency: raw.currency.trim().toUpperCase() || 'PLN', notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-confirmed-report-note').textContent = 'Сохранение подтверждённого итога…';
+  const result = await db.from('daria_campaign_confirmed_reports').upsert(payload, { onConflict: 'campaign_id,reported_on' }); submit.disabled = false;
+  if (result.error) { byId('campaign-confirmed-report-note').textContent = `Итог не сохранён: ${result.error.message}`; return; }
+  form.hidden = true; setStatus('Подтверждённый итог оператора сохранён с документом-источником'); await Promise.all([loadChannelsModule(), loadReportsModule(), loadOperations()]);
 }
 
 async function openConfirmedOrderFromCampaignResult() {
@@ -1183,18 +1236,22 @@ function ratio(numerator, denominator, suffix = '') {
   return `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(numerator / denominator)}${suffix}`;
 }
 
-function reportCard(concert, orders, expenses, campaigns) {
+function reportCard(concert, orders, expenses, campaigns, confirmedReports = []) {
   const currency = concert.currency || 'PLN';
   const paid = orders.filter(order => order.status === 'PAID');
-  const paidTickets = paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0);
+  const fallbackReports = campaigns.flatMap(campaign => paid.some(order => order.campaign_id === campaign.id) ? [] : confirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`)).slice(0, 1));
+  const paidTickets = paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
   const campaignOrders = paid.filter(order => order.campaign_id && order.attribution_type === 'CONFIRMED');
   const paidExpenses = expenses.filter(expense => expense.payment_status === 'PAID');
   const mandatory = expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID');
   const spend = campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0);
   const platformOrders = campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_orders) || 0), 0);
   const platformValue = campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_value) || 0), 0);
-  const confirmedGross = campaignOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0);
-  return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${currencyTotals(paid, 'gross_revenue')}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0))}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ЗАКАЗА ПО ПЛАТФОРМЕ</b>${ratio(spend, platformOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, campaignOrders.length, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПО ПЛАТФОРМЕ</b>${ratio(platformValue, spend, '×')}</div></div></article>`;
+  const confirmedOrders = campaignOrders.length + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_orders) || 0), 0);
+  const confirmedGross = campaignOrders.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0);
+  const confirmedTickets = campaignOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
+  const paidRevenue = paid.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0) + fallbackReports.filter(report => report.currency === currency).reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0);
+  return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${money(paidRevenue, currency)}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0))}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, confirmedOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА</b>${ratio(spend, confirmedTickets, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ</b>${ratio(confirmedGross, spend, '×')}</div></div></article>`;
 }
 
 function reportTable(headers, rows, emptyMessage) {
@@ -1262,17 +1319,18 @@ async function loadReportsModule() {
     byId('reports-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не трактуется как ноль.';
     return;
   }
-  const [concertsResult, ordersResult, expensesResult, campaignsResult, metricsResult, operatorsResult] = await Promise.all([
+  const [concertsResult, ordersResult, expensesResult, campaignsResult, metricsResult, operatorsResult, reportsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,currency,status'),
     db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status'),
     db.from('daria_campaigns').select('id,concert_id,channel_id,actual_spend,platform_reported_orders,platform_reported_value'),
     db.rpc('daria_channel_metrics'),
-    db.from('daria_ticketing_operators').select('id,name').order('name')
+    db.from('daria_ticketing_operators').select('id,name').order('name'),
+    db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false })
   ]);
   const errors = [concertsResult.error && `concerts: ${concertsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`, expensesResult.error && `expenses: ${expensesResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, metricsResult.error && `channel metrics: ${metricsResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
   if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не удалось собрать отчёт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
-  const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [];
+  const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [], confirmedReports = reportsResult.error ? [] : reportsResult.data || [];
   populateReportFilters(concerts, metrics);
   const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, channelId = byId('report-channel-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
   const selectedConcert = concerts.find(concert => concert.id === concertId);
@@ -1293,11 +1351,11 @@ async function loadReportsModule() {
   byId('r-spend-note').textContent = channelId === 'ALL' ? 'внесённые расходы кампаний' : 'расходы кампаний выбранного канала';
   byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0)) : '—';
   byId('r-unattributed-note').textContent = channelId === 'ALL' ? 'без привязки к кампании' : 'не относится к выбранному каналу';
-  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id))).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
+  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id), confirmedReports)).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
   renderChannelReport(metrics, concerts, concertIds, channelId);
   renderOperatorReport(visiblePaid, operators, concerts, concertIds);
   byId('reports-note').classList.remove('error');
-  byId('reports-note').textContent = 'Стоимость привлечения и окупаемость показаны только как отношение внесённых данных. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.';
+  byId('reports-note').textContent = reportsResult.error ? 'Итоги операторов станут доступны после применения следующей миграции базы. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.' : 'Подтверждённый итог оператора применяется только к кампании без оплаченных заказов. Показатели рекламной платформы и подтверждённые продажи намеренно не объединяются.';
 }
 
 function amountMap(items, field = 'amount') {
@@ -1574,6 +1632,9 @@ function bindEvents() {
   byId('cancel-campaign-result').addEventListener('click', () => { byId('campaign-result-form').hidden = true; });
   byId('campaign-result-form').addEventListener('submit', saveCampaignResult);
   byId('campaign-result-order').addEventListener('click', openConfirmedOrderFromCampaignResult);
+  byId('campaign-result-report').addEventListener('click', openCampaignConfirmedReportForm);
+  byId('cancel-campaign-confirmed-report').addEventListener('click', () => { byId('campaign-confirmed-report-form').hidden = true; });
+  byId('campaign-confirmed-report-form').addEventListener('submit', saveCampaignConfirmedReport);
   byId('campaign-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-campaign]');
     if (button) openCampaignForm(state.campaigns.find(campaign => campaign.id === button.dataset.editCampaign));
