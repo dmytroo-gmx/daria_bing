@@ -1418,7 +1418,7 @@ function bindEvents() {
     selectConcert(button.dataset.id);
   });
   byId('add-order').addEventListener('click', () => openOrderForm());
-  byId('add-campaign-result').addEventListener('click', async () => { await loadChannelsModule(); openCampaignResultForm(); });
+  byId('add-campaign-result').addEventListener('click', async () => { showView('channels'); await loadChannelsModule(); openCampaignResultForm(); });
   byId('cancel-order').addEventListener('click', () => { byId('order-form').hidden = true; });
   byId('order-form').addEventListener('submit', saveOrder);
   byId('order-concert-filter').addEventListener('change', renderSales);
