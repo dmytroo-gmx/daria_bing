@@ -563,7 +563,8 @@ function populateOrderOptions() {
 function renderSales() {
   const concertFilter = byId('order-concert-filter').value;
   const statusFilter = byId('order-status-filter').value;
-  const visible = state.orders.filter(order => (concertFilter === 'ALL' || order.concert_id === concertFilter) && (statusFilter === 'ALL' || order.status === statusFilter));
+  const attributionFilter = byId('order-attribution-filter').value;
+  const visible = state.orders.filter(order => (concertFilter === 'ALL' || order.concert_id === concertFilter) && (statusFilter === 'ALL' || order.status === statusFilter) && (attributionFilter === 'ALL' || order.attribution_type === attributionFilter));
   byId('order-list').innerHTML = visible.map(order => {
     const concert = state.concerts.find(item => item.id === order.concert_id);
     const operator = state.operators.find(item => item.id === order.operator_id);
@@ -1497,6 +1498,7 @@ function bindEvents() {
   byId('order-form').addEventListener('submit', saveOrder);
   byId('order-concert-filter').addEventListener('change', renderSales);
   byId('order-status-filter').addEventListener('change', renderSales);
+  byId('order-attribution-filter').addEventListener('change', renderSales);
   byId('order-list').addEventListener('click', event => {
     const button = event.target.closest('[data-edit-order]');
     if (!button) return;
