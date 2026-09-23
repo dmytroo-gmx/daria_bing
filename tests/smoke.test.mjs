@@ -277,6 +277,12 @@ test('server-side metrics and audit logging are present in the additive migratio
   assert.match(migration, /daria_audit_campaigns/);
 });
 
+test('concert history shows the recorded audit actor', () => {
+  assert.match(js, /const auditActorLabel/);
+  assert.match(js, /entity_id,user_id,created_at/);
+  assert.match(js, /Полный идентификатор автора/);
+});
+
 test('the current server metric subtracts campaign spend from the operational result', async () => {
   const migration = await readFile(new URL('../supabase/migrations/0011_include_marketing_in_operational_result.sql', import.meta.url), 'utf8');
   assert.match(migration, /create or replace function public\.daria_concert_metrics/);
