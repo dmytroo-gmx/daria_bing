@@ -67,6 +67,16 @@ test('concerts support create, edit, detail, filters and all schema statuses', (
   for (const status of ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED']) assert.match(html, new RegExp(status));
 });
 
+test('deletion controls require confirmation and protect linked operational records', () => {
+  for (const control of ['data-delete-concert', 'data-delete-task', 'data-delete-order', 'data-delete-document', 'data-delete-channel', 'data-delete-campaign', 'data-delete-link', 'data-delete-operator', 'data-delete-expense', 'data-delete-snapshot']) assert.match(js, new RegExp(control));
+  assert.match(js, /async function deleteRecord/);
+  assert.match(js, /window\.confirm\(`Удалить/);
+  assert.match(js, /async function blockingReferences/);
+  assert.match(js, /Нельзя удалить/);
+  assert.match(js, /daria_unattributed_operator_reports/);
+  assert.match(css, /\.text-button\.danger/);
+});
+
 test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /ticket_count,gross_revenue,status/);
   assert.match(js, /daria_campaigns'\)\.select\('id,concert_id,actual_spend'\)/);
