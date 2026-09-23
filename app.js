@@ -21,6 +21,7 @@ const labels = {
   attribution: { UNKNOWN: 'ИСТОЧНИК НЕ УСТАНОВЛЕН', CONFIRMED: 'ПОДТВЕРЖДЁННЫЙ ИСТОЧНИК', PLATFORM_ATTRIBUTED: 'УКАЗАНО ПЛАТФОРМОЙ' },
   campaignStatus: { TESTING: 'ПРОВЕРКА', WORKING: 'РАБОТАЕТ', WEAK: 'СЛАБАЯ', STOPPED: 'ОСТАНОВЛЕНА' },
   attributionQuality: { UNKNOWN: 'НЕ ОЦЕНЕНО', HIGH: 'ВЫСОКАЯ', MEDIUM: 'СРЕДНЯЯ', LOW: 'НИЗКАЯ' },
+  operatorRecommendation: { RECOMMENDED: 'РЕКОМЕНДОВАН', BACKUP: 'РЕЗЕРВНЫЙ', NEGOTIATING: 'ПЕРЕГОВОРЫ', NOT_SUITABLE: 'НЕ ПОДХОДИТ', PAUSED: 'НА ПАУЗЕ' },
   expenseType: { ALREADY_PAID: 'УЖЕ ОПЛАЧЕНО', MANDATORY_FUTURE: 'ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', OPTIONAL_FUTURE: 'НЕОБЯЗАТЕЛЬНЫЙ РАСХОД', REFUNDABLE_DEPOSIT: 'ВОЗВРАТНЫЙ ЗАЛОГ' },
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
@@ -246,6 +247,14 @@ function renderDashboardChannelAnswer(metrics, concerts, unavailable = false) {
     const bestCpa = [...scope].filter(row => row.spend > 0).sort((left, right) => left.spend / left.tickets - right.spend / right.tickets)[0];
     return `<article class="attention-item"><div><b>БОЛЬШЕ ВСЕГО БИЛЕТОВ · ${esc(currency)}</b><span>${esc(mostTickets.name)} · ${fmt(mostTickets.tickets)} билетов · ${fmt(mostTickets.orders)} заказов · ${money(mostTickets.revenue, currency)}</span></div><div>${bestCpa ? `<b>НИЖЕ ВСЕГО СТОИМОСТЬ БИЛЕТА</b><span>${esc(bestCpa.name)} · ${money(bestCpa.spend / bestCpa.tickets, currency)}</span>` : '<span>Нет расходов, с которыми можно сопоставить стоимость билета.</span>'}</div></article>`;
   }).join('');
+}
+
+function renderDashboardOperatorAnswer(operators, unavailable = false) {
+  const target = byId('dashboard-operator-answer');
+  if (unavailable) { target.innerHTML = '<div class="empty">Условия операторов сейчас недоступны; данные не подменены выводом.</div>'; return; }
+  const priority = { RECOMMENDED: 0, BACKUP: 1, NEGOTIATING: 2, PAUSED: 3, NOT_SUITABLE: 4 };
+  const visible = [...operators].sort((left, right) => (priority[left.legacy_recommendation] ?? 9) - (priority[right.legacy_recommendation] ?? 9) || left.name.localeCompare(right.name, 'ru'));
+  target.innerHTML = visible.map(operator => `<article class="attention-item"><div><b>${esc(operator.name)} · ${esc(label('operatorRecommendation', operator.legacy_recommendation))}</b><span>${esc(operator.contract_notes || operator.notes || 'Причина ещё не зафиксирована.')}</span></div><div><span>${operator.last_offer_date ? `последнее предложение: ${esc(dateLabel(operator.last_offer_date))}` : 'дата последнего предложения не зафиксирована'}</span></div></article>`).join('') || '<div class="truth-note">Нет внесённых операторов. Система не делает рекомендацию без зафиксированных условий.</div>';
 }
 
 function detailValue(label, value) { return `<div class="detail-row"><span>${label}</span><strong>${esc(value ?? '—')}</strong></div>`; }
@@ -516,6 +525,7 @@ async function loadOperations() {
     byId('dashboard-concerts').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть операционные данные.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть проверку данных.</div>';
     byId('dashboard-channel-answer').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть подтверждённые показатели каналов.</div>';
+    byId('dashboard-operator-answer').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть условия билетных операторов.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы открыть реестр концертов.</div>';
     byId('dashboard-note').classList.remove('error');
     byId('dashboard-note').textContent = 'Данные скрыты правилами доступа. Пустой ответ без входа не трактуется как ноль.';
@@ -523,7 +533,7 @@ async function loadOperations() {
     state.totals = new Map();
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, channelMetricsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, channelMetricsResult, operatorsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('id,concert_id,actual_spend'),
@@ -532,7 +542,8 @@ async function loadOperations() {
     db.from('daria_source_documents').select('concert_id'),
     db.from('daria_operational_tasks').select('concert_id,title,task_status'),
     db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
-    db.rpc('daria_channel_metrics')
+    db.rpc('daria_channel_metrics'),
+    db.from('daria_ticketing_operators').select('name,legacy_recommendation,contract_notes,notes,last_offer_date').order('name')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
@@ -622,6 +633,7 @@ async function loadOperations() {
   const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
   renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys, dashboardConcerts);
   renderDashboardChannelAnswer(channelMetricsResult.data || [], dashboardConcerts, Boolean(channelMetricsResult.error));
+  renderDashboardOperatorAnswer(operatorsResult.data || [], Boolean(operatorsResult.error));
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
   note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : reportsResult.error ? `Итоги операторов станут доступны после применения следующей миграции базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
