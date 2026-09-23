@@ -66,6 +66,7 @@ test('dashboard uses canonical sales and marketing fields', () => {
   assert.match(js, /daria_campaigns'\)\.select\('concert_id,actual_spend'\)/);
   assert.match(js, /campaignSpend\.forEach\(\(amount, currency\) => operationalResult\.set/);
   assert.match(js, /function formatCurrencyMap/);
+  assert.match(js, /ОПЕРАЦИОННЫЙ ОСТАТОК: \$\{money\(projectedResult, currency\)\}/);
   assert.match(js, /concertFinance/);
   assert.match(js, /БЛИЖАЙШИЙ ПЛАТЁЖ/);
   assert.doesNotMatch(js, /quantity,gross_amount/);
