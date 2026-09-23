@@ -1303,6 +1303,11 @@ function reportCard(concert, orders, expenses, campaigns, confirmedReports = [])
   return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${money(paidRevenue, currency)}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0))}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, confirmedOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА</b>${ratio(spend, confirmedTickets, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ</b>${ratio(confirmedGross, spend, '×')}</div></div></article>`;
 }
 
+function latestFallbackOperatorReports(campaigns, paidOrders, confirmedReports) {
+  const paidCampaignIds = new Set(paidOrders.filter(order => order.status === 'PAID').map(order => order.campaign_id).filter(Boolean));
+  return campaigns.flatMap(campaign => paidCampaignIds.has(campaign.id) ? [] : confirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`)).slice(0, 1));
+}
+
 function reportTable(headers, rows, emptyMessage) {
   if (!rows.length) return `<div class="empty">${esc(emptyMessage)}</div>`;
   return `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
@@ -1393,10 +1398,11 @@ async function loadReportsModule() {
   const visibleCampaignIds = new Set(visibleCampaigns.map(campaign => campaign.id));
   const visiblePaid = channelId === 'ALL' ? paid : paid.filter(order => visibleCampaignIds.has(order.campaign_id));
   const visibleMetrics = metrics.filter(metric => concertIds.has(metric.concert_id) && (channelId === 'ALL' || metric.channel_id === channelId));
+  const fallbackOperatorReports = latestFallbackOperatorReports(visibleCampaigns, visiblePaid, confirmedReports);
   byId('r-concerts').textContent = visibleConcerts.length;
-  byId('r-paid-tickets').textContent = fmt(visiblePaid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0));
+  byId('r-paid-tickets').textContent = fmt(visiblePaid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
   byId('r-spend').textContent = money(visibleCampaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
-  byId('r-paid-tickets-note').textContent = channelId === 'ALL' ? 'подтверждённые заказы' : 'подтверждённые заказы выбранного канала';
+  byId('r-paid-tickets-note').textContent = fallbackOperatorReports.length ? 'подтверждённые заказы и итоги операторов' : channelId === 'ALL' ? 'подтверждённые заказы' : 'подтверждённые заказы выбранного канала';
   byId('r-spend-note').textContent = channelId === 'ALL' ? 'внесённые расходы кампаний' : 'расходы кампаний выбранного канала';
   byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0)) : '—';
   byId('r-unattributed-note').textContent = channelId === 'ALL' ? 'без привязки к кампании' : 'не относится к выбранному каналу';

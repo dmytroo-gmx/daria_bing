@@ -296,6 +296,9 @@ test('report channel filter scopes headline metrics and concert cards consistent
   assert.match(js, /const visiblePaid = channelId === 'ALL' \? paid : paid\.filter\(order => visibleCampaignIds\.has\(order\.campaign_id\)\)/);
   assert.match(js, /renderOperatorReport\(visiblePaid, operators, concerts, concertIds\)/);
   assert.match(js, /не относится к выбранному каналу/);
+  assert.match(js, /function latestFallbackOperatorReports\(campaigns, paidOrders, confirmedReports\)/);
+  assert.match(js, /fallbackOperatorReports\.reduce\(\(sum, report\) => sum \+ \(Number\(report\.confirmed_tickets\) \|\| 0\), 0\)/);
+  assert.match(js, /подтверждённые заказы и итоги операторов/);
 });
 
 test('campaign results lead to a separate prefilled confirmed order workflow', () => {
