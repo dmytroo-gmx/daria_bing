@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4eee5">
+  <title>Legacy Imperial · Всё под рукой</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="startup" id="startup"><b>Legacy Imperial</b><span>открываю рабочее пространство…</span></div>
+  <div class="shell" id="shell" hidden>
+    <header><button class="brand" data-view="today"><b>Legacy Imperial</b><small>всё под рукой</small></button><div class="avatar" id="avatar">Л</div></header>
+    <main>
+      <section class="view active" data-panel="today"><p class="eyebrow" id="today-date"></p><h1 id="greeting">Добрый день</h1><p class="lead">Здесь только то, что действительно требует внимания.</p><a class="brain" href="../"><span>♜</span><span><b>Концерты и Legacy Brain</b><small>Продажи, расходы, документы и контрольные даты</small></span><i>→</i></a><div class="summary"><button data-view="tasks"><strong id="today-task-count">0</strong><span>открытых задач</span></button><button data-view="events"><strong id="today-event-count">0</strong><span>ближайших концертов</span></button></div><h2>Мои задачи</h2><div class="list" id="today-tasks"></div><h2>Ближайшее</h2><div class="list" id="today-events"></div></section>
+      <section class="view" data-panel="tasks"><div class="page-head"><div><p class="eyebrow">Общая работа</p><h1>Задачи</h1></div><button class="round" id="new-task">+</button></div><div class="chips"><button class="active" data-task-filter="mine">Мои</button><button data-task-filter="decision">Ждут решения</button><button data-task-filter="all">Все</button><button data-task-filter="done">Готово</button></div><div class="list" id="task-list"></div></section>
+      <section class="view" data-panel="events"><div class="page-head"><div><p class="eyebrow">Концертный календарь</p><h1>События</h1></div></div><p class="lead">Концерты берутся из Legacy Brain — отдельной копии событий здесь нет.</p><div class="list" id="event-list"></div></section>
+      <section class="view" data-panel="documents"><div class="page-head"><div><p class="eyebrow">Важное под рукой</p><h1>Документы</h1></div></div><p class="lead">Последние документы-источники Legacy Brain.</p><div class="list" id="document-list"></div></section>
+      <section class="view" data-panel="more"><p class="eyebrow">Команда и системы</p><h1>Ещё</h1><div class="list" id="team-list"></div><a class="tool" href="https://www.legacyimperial.com" target="_blank" rel="noopener"><b>Главный сайт</b><small>Публичные страницы концертов</small></a><a class="tool" href="../"><b>Legacy Brain</b><small>Полная операционная система</small></a></section>
+      <section class="view" data-panel="access"><p class="eyebrow">Доступ</p><h1>Нужно подтверждение</h1><p class="lead" id="access-message"></p></section>
+    </main>
+    <nav><button class="active" data-view="today"><span>⌂</span>Сегодня</button><button data-view="tasks"><span>✓</span>Задачи</button><button data-view="events"><span>◌</span>События</button><button data-view="documents"><span>▱</span>Документы</button><button data-view="more"><span>•••</span>Ещё</button></nav>
+  </div>
+  <dialog id="task-dialog"><form id="task-form"><div class="dialog-head"><h2 id="task-dialog-title">Новая задача</h2><button type="button" data-close>×</button></div><input type="hidden" name="id"><label>Название<input name="title" required maxlength="240"></label><label>Описание<textarea name="details" rows="4" maxlength="4000"></textarea></label><label>Концерт<select name="concert_id"><option value="">Не привязано</option></select></label><label>Исполнитель<select name="assignee_ops_user_id"></select></label><div class="two"><label>Срок<input name="due_date" type="date"></label><label>Приоритет<select name="priority"><option value="LOW">Низкий</option><option value="NORMAL">Обычный</option><option value="HIGH">Высокий</option><option value="CRITICAL">Критический</option></select></label></div><label>Состояние<select name="task_status"><option value="OPEN">Открыта</option><option value="IN_PROGRESS">В работе</option><option value="WAITING_FOR_DECISION">Ждёт решения</option><option value="DONE">Готово</option><option value="CANCELLED">Отменена</option></select></label><label id="decision-owner" hidden>Чьего решения ждём<select name="blocked_by_ops_user_id"></select></label><div class="actions"><button class="danger" type="button" id="delete-task" hidden>Удалить</button><button class="primary" type="submit">Сохранить</button></div><p class="form-error" id="task-error"></p></form></dialog>
+  <div class="toast" id="toast"></div>
+  <script src="./app.js"></script>
+</body>
+</html>
+

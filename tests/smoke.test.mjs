@@ -422,3 +422,23 @@ test('legacy booking remains available but is explicitly separated from confirme
   assert.match(js, /legacy-confirmed-orders-live/);
   assert.match(css, /@media\(max-width:820px\)/);
 });
+
+test('Antonio panel is isolated inside Legacy Brain and verifies Telegram server-side', async () => {
+  const [opsHtml, opsJs, telegramApi, migration] = await Promise.all([
+    readFile(new URL('../ops/index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../ops/app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../api/telegram-auth.js', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/0017_ops_telegram_shared_core.sql', import.meta.url), 'utf8')
+  ]);
+  assert.match(opsHtml, /Legacy Imperial/);
+  assert.match(opsHtml, /Сегодня/);
+  assert.match(opsHtml, /Задачи/);
+  assert.match(opsHtml, /События/);
+  assert.match(opsHtml, /Документы/);
+  assert.match(opsJs, /Telegram\?\.WebApp/);
+  assert.match(telegramApi, /validateTelegramInitData/);
+  assert.match(migration, /create table if not exists public\.daria_ops_users/);
+  assert.match(migration, /7803517817/);
+  assert.match(migration, /707507251/);
+  assert.doesNotMatch(migration.toLowerCase(), /drop table|truncate|delete from/);
+});
