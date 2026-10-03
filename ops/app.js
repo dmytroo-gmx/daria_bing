@@ -1,7 +1,12 @@
 const state = { user: null, users: [], tasks: [], concerts: [], documents: [], token: '', filter: 'mine' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[char]));
-const labels = { OPEN:'Открыта', IN_PROGRESS:'В работе', WAITING_FOR_DECISION:'Ждёт решения', DONE:'Готово', CANCELLED:'Отменена', LOW:'Низкий', NORMAL:'Обычный', HIGH:'Высокий', CRITICAL:'Критический' };
+const labels = {
+  OPEN:'Открыта', IN_PROGRESS:'В работе', WAITING_FOR_DECISION:'Ждёт решения', DONE:'Готово', CANCELLED:'Отменена',
+  LOW:'Низкий', NORMAL:'Обычный', HIGH:'Высокий', CRITICAL:'Критический',
+  DRAFT:'Черновик', PLANNED:'Запланирован', ON_SALE:'В продаже', ACTIVE:'В работе', ON_HOLD:'На паузе',
+  POSTPONED:'Перенесён', COMPLETED:'Завершён', PDF:'Документ', CSV:'Табличная выгрузка', OTHER:'Другой'
+};
 
 function toast(message) { const node = $('toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2400); }
 function formatDate(value) { return value ? new Intl.DateTimeFormat('ru-RU', { dateStyle:'medium', timeZone:'Europe/Warsaw' }).format(new Date(`${value}T12:00:00Z`)) : 'без даты'; }
@@ -29,8 +34,8 @@ function filteredTasks() {
   return state.tasks;
 }
 function renderTasks() { const tasks = filteredTasks(); $('task-list').innerHTML = tasks.length ? tasks.map(task => taskCard(task)).join('') : '<div class="empty">По этому фильтру задач нет.</div>'; }
-function renderEvents() { $('event-list').innerHTML = state.concerts.length ? state.concerts.map(item => `<article class="card"><div class="row"><h3>${escapeHtml(item.event_name)}</h3><b>${escapeHtml(item.status)}</b></div><p>${escapeHtml(formatDate(item.event_date))} · ${escapeHtml(item.city)}${item.venue ? ` · ${escapeHtml(item.venue)}` : ''}</p></article>`).join('') : '<div class="empty">Концерты ещё не внесены.</div>'; }
-function renderDocuments() { $('document-list').innerHTML = state.documents.length ? state.documents.map(item => `<article class="card"><div class="row"><h3>${escapeHtml(item.title)}</h3><b>${escapeHtml(item.document_type)}</b></div><p>${escapeHtml(formatDate(item.source_date))}${item.notes ? ` · ${escapeHtml(item.notes)}` : ''}</p></article>`).join('') : '<div class="empty">Документы не найдены.</div>'; }
+function renderEvents() { $('event-list').innerHTML = state.concerts.length ? state.concerts.map(item => `<article class="card"><div class="row"><h3>${escapeHtml(item.event_name)}</h3><b>${escapeHtml(labels[item.status] || 'Не указан')}</b></div><p>${escapeHtml(formatDate(item.event_date))} · ${escapeHtml(item.city)}${item.venue ? ` · ${escapeHtml(item.venue)}` : ''}</p></article>`).join('') : '<div class="empty">Концерты ещё не внесены.</div>'; }
+function renderDocuments() { $('document-list').innerHTML = state.documents.length ? state.documents.map(item => `<article class="card"><div class="row"><h3>${escapeHtml(item.title)}</h3><b>${escapeHtml(labels[item.document_type] || 'Документ')}</b></div><p>${escapeHtml(formatDate(item.source_date))}${item.notes ? ` · ${escapeHtml(item.notes)}` : ''}</p></article>`).join('') : '<div class="empty">Документы не найдены.</div>'; }
 function renderTeam() { $('team-list').innerHTML = state.users.map(item => `<article class="card"><div class="row"><h3>${escapeHtml(item.name)}</h3><b>${item.role === 'OWNER' ? 'Владелец' : item.role === 'OPERATIONS_ADMIN' ? 'Администратор' : 'Команда'}</b></div></article>`).join(''); }
 function render() { $('avatar').textContent = state.user.name.slice(0,1).toUpperCase(); $('greeting').textContent = `Добрый день, ${state.user.name}`; renderToday(); renderTasks(); renderEvents(); renderDocuments(); renderTeam(); }
 
