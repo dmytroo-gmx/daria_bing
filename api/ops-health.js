@@ -6,7 +6,7 @@ module.exports = async function handler(request, response) {
 
   try {
     await store.select('daria_ops_users?select=id,name,role,telegram_user_id,active&active=eq.true&limit=1');
-    return response.status(200).json({ ok: true, database: 'ready' });
+    return response.status(200).json({ ok: true, database: 'ready', check: 'full_profile' });
   } catch (error) {
     return response.status(503).json({
       ok: false,
