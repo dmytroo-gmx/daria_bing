@@ -17,8 +17,19 @@ async function request(path, options = {}) {
     },
     signal: AbortSignal.timeout(12000)
   });
-  if (!response.ok) throw new Error(`database_${response.status}`);
   const text = await response.text();
+  if (!response.ok) {
+    let databaseCode = '';
+    try {
+      databaseCode = JSON.parse(text)?.code || '';
+    } catch {
+      databaseCode = '';
+    }
+    const error = new Error(`database_${response.status}${databaseCode ? `_${databaseCode}` : ''}`);
+    error.status = response.status;
+    error.databaseCode = databaseCode;
+    throw error;
+  }
   return text ? JSON.parse(text) : null;
 }
 

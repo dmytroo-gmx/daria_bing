@@ -442,3 +442,14 @@ test('Antonio panel is isolated inside Legacy Brain and verifies Telegram server
   assert.match(migration, /707507251/);
   assert.doesNotMatch(migration.toLowerCase(), /drop table|truncate|delete from/);
 });
+
+test('Antonio panel exposes a secret-safe database readiness check', async () => {
+  const [health, store] = await Promise.all([
+    readFile(new URL('../api/ops-health.js', import.meta.url), 'utf8'),
+    readFile(new URL('../server/ops-store.js', import.meta.url), 'utf8')
+  ]);
+  assert.match(health, /daria_ops_users\?select=id&limit=1/);
+  assert.match(health, /database: 'ready'/);
+  assert.doesNotMatch(health, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/);
+  assert.match(store, /databaseCode/);
+});
