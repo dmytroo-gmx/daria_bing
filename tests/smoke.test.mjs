@@ -511,3 +511,11 @@ test('concert control dates compare confirmed sales without making the decision'
   assert.match(migration, /DECISION_GATE/);
   assert.match(migration, /never decides/i);
 });
+
+test('sales pace uses confirmed operator snapshots and stays labelled as a calculation', () => {
+  assert.match(js, /function salesPace/);
+  assert.match(js, /function milestonePaceSummary/);
+  assert.match(js, /operator_id,snapshot_date,tickets_sold_total/);
+  assert.match(js, /Расчётный темп/);
+  assert.match(js, /не гарантированный прогноз/);
+});

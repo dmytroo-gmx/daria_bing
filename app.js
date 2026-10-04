@@ -274,7 +274,7 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unknownOrd
   target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button>${action === 'unknown' || openTaskKeys.has(`${concert.id}:${attentionTaskTitle(action)}`) ? '' : `<button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button>`}</div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
 
-function renderDashboardMilestones(milestones, concerts, unavailable = false) {
+function renderDashboardMilestones(milestones, concerts, snapshots, unavailable = false) {
   const target = byId('dashboard-milestones');
   if (unavailable) { target.innerHTML = '<div class="empty">Контрольные даты недоступны до применения миграции базы.</div>'; return; }
   const concertById = new Map(concerts.map(concert => [concert.id, concert]));
@@ -282,7 +282,8 @@ function renderDashboardMilestones(milestones, concerts, unavailable = false) {
   target.innerHTML = visible.map(milestone => {
     const concert = concertById.get(milestone.concert_id);
     const sold = state.totals.get(concert.id)?.tickets || 0;
-    return `<article class="attention-item"><div><b>${esc(concert.event_name)} · ${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)}</b><span>${esc(dateLabel(milestone.target_date))} · ${esc(milestone.title)}${milestone.target_tickets == null ? '' : ` · ${fmt(sold)} из ${fmt(milestone.target_tickets)} бил.`}</span></div><div><b>${esc(milestoneSignal(milestone, sold))}</b><button class="text-button" type="button" data-open-milestones="${esc(concert.id)}">ОТКРЫТЬ</button></div></article>`;
+    const pace = milestonePaceSummary(milestone, sold, snapshots.filter(snapshot => snapshot.concert_id === concert.id));
+    return `<article class="attention-item"><div><b>${esc(concert.event_name)} · ${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)}</b><span>${esc(dateLabel(milestone.target_date))} · ${esc(milestone.title)}${milestone.target_tickets == null ? '' : ` · ${fmt(sold)} из ${fmt(milestone.target_tickets)} бил.`}${pace ? ` · ${esc(pace)}` : ''}</span></div><div><b>${esc(milestoneSignal(milestone, sold))}</b><button class="text-button" type="button" data-open-milestones="${esc(concert.id)}">ОТКРЫТЬ</button></div></article>`;
   }).join('') || '<div class="truth-note">Открытых контрольных дат пока нет. Добавь их в карточке концерта: цель продаж, запуск рекламы и дату обязательного решения.</div>';
 }
 
@@ -368,6 +369,38 @@ function milestoneSignal(milestone, sold) {
   return due ? 'ТРЕБУЕТСЯ РЕШЕНИЕ ЧЕЛОВЕКА' : 'РЕШЕНИЕ ЗАПЛАНИРОВАНО';
 }
 
+function salesPace(snapshots) {
+  const groups = new Map();
+  snapshots.filter(snapshot => snapshot.operator_id).forEach(snapshot => groups.set(snapshot.operator_id, [...(groups.get(snapshot.operator_id) || []), snapshot]));
+  let dailyRate = 0, operators = 0, corrected = false;
+  groups.forEach(group => {
+    const [latest, previous] = [...group].sort((left, right) => String(right.snapshot_date).localeCompare(String(left.snapshot_date)));
+    if (!previous || latest.snapshot_date === previous.snapshot_date) return;
+    const days = Math.max(1, Math.round((new Date(`${latest.snapshot_date}T12:00:00`) - new Date(`${previous.snapshot_date}T12:00:00`)) / 86400000));
+    const delta = Number(latest.tickets_sold_total || 0) - Number(previous.tickets_sold_total || 0);
+    if (delta < 0) corrected = true;
+    dailyRate += Math.max(0, delta) / days;
+    operators += 1;
+  });
+  return { dailyRate, operators, corrected };
+}
+
+function milestonePaceSummary(milestone, sold, snapshots) {
+  if (milestone.milestone_type !== 'SALES_TARGET' || milestone.status !== 'OPEN') return '';
+  const pace = salesPace(snapshots);
+  if (!pace.operators) return 'Темп пока не рассчитан: нужны два подтверждённых среза одного оператора.';
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const targetDate = new Date(`${milestone.target_date}T12:00:00`);
+  const days = Math.max(0, Math.ceil((targetDate - today) / 86400000));
+  const missing = Math.max(0, Number(milestone.target_tickets || 0) - Number(sold || 0));
+  const required = days ? missing / days : null;
+  const projected = Math.round(Number(sold || 0) + pace.dailyRate * days);
+  const correction = pace.corrected ? ' · была отрицательная корректировка, она не считается отрицательным темпом' : '';
+  if (!missing) return `Расчётный темп: ${pace.dailyRate.toFixed(1)} бил./день · цель уже достигнута${correction}`;
+  if (!days) return `Срок цели прошёл · не хватает ${fmt(missing)} бил. · расчётный темп ${pace.dailyRate.toFixed(1)} бил./день${correction}`;
+  return `Расчётный темп: ${pace.dailyRate.toFixed(1)} бил./день · нужно ${required.toFixed(1)} бил./день · расчёт к дате: ${fmt(projected)} бил.${correction}`;
+}
+
 function checklistItem(done, title, copy, action = '') {
   return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОДАТИ ДЖЕРЕЛО' : 'ДОДАТИ ЗРІЗ'}</button>` : ''}</span></div>`;
 }
@@ -407,7 +440,7 @@ function renderConcertDetail() {
   const tabs = detailTabs.map(tab => `<button type="button" class="detail-tab ${state.detailTab === tab ? 'active' : ''}" data-detail-tab="${tab}">${detailTabLabels[tab]}</button>`).join('');
   let content = '';
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО ОПЛАЧЕННЫХ БИЛЕТОВ', fmt(sold))}${detailValue('ОСТАЛОСЬ', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОЛНЕНИЕ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ТОЧКА БЕЗУБЫТОЧНОСТИ', breakEven == null ? '—' : fmt(breakEven))}${detailValue('ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue(help('ВЫРУЧКА ДО УДЕРЖАНИЙ', 'Сумма оплаченных заказов до комиссии оператора и расходов.'), money(metric.gross_revenue, concert.currency))}${detailValue(help('ВЫРУЧКА ПОСЛЕ УДЕРЖАНИЙ', 'Внесённая сумма после удержаний оператора.'), money(metric.net_revenue, concert.currency))}${detailValue(help('УЖЕ ОПЛАЧЕНО', 'Подтверждённые расходы, которые уже отмечены как оплаченные.'), money(metric.already_spent, concert.currency))}${detailValue(help('ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'Будущие обязательные расходы, которые ещё не оплачены.'), money(metric.mandatory_future, concert.currency))}${detailValue(help('БЛИЖАЙШИЙ ОБЯЗАТЕЛЬНЫЙ ПЛАТЁЖ', 'Самый ранний по сроку неоплаченный обязательный расход.'), nextMandatory ? `${money(nextMandatory.amount, nextMandatory.currency || concert.currency)} · ${nextMandatory.due_date ? dateLabel(nextMandatory.due_date) : 'дата не указана'}` : '—')}${detailValue(help('НЕОБЯЗАТЕЛЬНЫЕ РАСХОДЫ', 'Будущие расходы, которые можно не нести без нарушения обязательств.'), money(metric.optional_future, concert.currency))}${detailValue(help('НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН', 'Та часть необязательных расходов, которую явно включили в плановую себестоимость.'), money(selectedOptional, concert.currency))}${detailValue(help('ВОЗВРАТНЫЕ ЗАЛОГИ', 'Внесённые суммы, которые должны вернуться после выполнения условий. Они не входят в невозвратную себестоимость.'), money(metric.refundable_deposits, concert.currency))}${detailValue(help('РАСХОДЫ НА РЕКЛАМУ', 'Фактически внесённые расходы по кампаниям.'), money(metric.marketing_spend, concert.currency))}${detailValue(help('ПЛАНОВЫЕ НЕВОЗВРАТНЫЕ РАСХОДЫ', 'Уже оплаченные расходы, обязательные будущие и явно включённые необязательные расходы. Возвратные залоги не включены.'), money(metric.projected_nonref_cost, concert.currency))}${detailValue(help('ОПЕРАЦИОННЫЙ ОСТАТОК', 'Расчёт: выручка минус уже оплаченные расходы, обязательные будущие, выбранные необязательные расходы и фактические расходы кампаний.'), money(projectedResult, concert.currency))}</div><div class="truth-note">${concert.break_even_mode === 'CALCULATED' ? 'Точка безубыточности рассчитана из внесённых невозвратных расходов и фактических расходов кампаний. Валюты автоматически не конвертируются.' : detail.server ? 'Показатели рассчитаны в общей базе. Валюты автоматически не конвертируются.' : 'Показатели из базы ещё не загружены; показан доступный локальный итог.'}</div>`;
-  if (state.detailTab === 'MILESTONES') content = `<button class="button subtle" type="button" data-add-milestone="${esc(concert.id)}">+ ДОБАВИТЬ КОНТРОЛЬНУЮ ДАТУ</button><div class="truth-note">Сигнал отставания сравнивает подтверждённые продажи с заданной целью. Он не принимает решение о проведении, переносе или отмене концерта.</div>${detail.milestones.map(milestone => `<div class="detail-line"><b>${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)} · ${esc(milestone.title)}</b><span>${esc(dateLabel(milestone.target_date))}${milestone.target_tickets == null ? '' : ` · цель ${fmt(milestone.target_tickets)} бил.`} · ${esc(milestoneSignal(milestone, sold))}${milestone.notes ? ` · ${esc(milestone.notes)}` : ''} · <button class="text-button" type="button" data-edit-milestone="${esc(milestone.id)}">ИЗМЕНИТЬ</button> · <button class="text-button danger" type="button" data-delete-milestone="${esc(milestone.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Контрольные даты ещё не заданы.</div>'}`;
+  if (state.detailTab === 'MILESTONES') content = `<button class="button subtle" type="button" data-add-milestone="${esc(concert.id)}">+ ДОБАВИТЬ КОНТРОЛЬНУЮ ДАТУ</button><div class="truth-note">Сигнал отставания сравнивает подтверждённые продажи с заданной целью. Темп — расчёт по двум последним срезам каждого оператора, а не гарантированный прогноз. Система не принимает решение о проведении, переносе или отмене концерта.</div>${detail.milestones.map(milestone => `<div class="detail-line"><b>${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)} · ${esc(milestone.title)}</b><span>${esc(dateLabel(milestone.target_date))}${milestone.target_tickets == null ? '' : ` · цель ${fmt(milestone.target_tickets)} бил.`} · ${esc(milestoneSignal(milestone, sold))}${milestonePaceSummary(milestone, sold, detail.snapshots) ? ` · ${esc(milestonePaceSummary(milestone, sold, detail.snapshots))}` : ''}${milestone.notes ? ` · ${esc(milestone.notes)}` : ''} · <button class="text-button" type="button" data-edit-milestone="${esc(milestone.id)}">ИЗМЕНИТЬ</button> · <button class="text-button danger" type="button" data-delete-milestone="${esc(milestone.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Контрольные даты ещё не заданы.</div>'}`;
   if (state.detailTab === 'CHECKLIST') { const sourceReady = detail.documents.length > 0, snapshotsReady = detail.snapshots.length > 0, sourcedSnapshots = detail.snapshots.filter(snapshot => snapshot.source_document_id).length; content = `<div class="truth-note">Это техническая готовность данных, а не оценка финансового состояния концерта.</div>${checklistItem(sourceReady, 'Источник для концерта', sourceReady ? `${fmt(detail.documents.length)} файлов привязано` : 'Сначала нужен файл от оператора или Meta', sourceReady ? '' : 'source')}${checklistItem(snapshotsReady, 'Ежедневный срез продаж', snapshotsReady ? `${fmt(detail.snapshots.length)} срезов внесено` : 'После источника внесите первый срез по одному оператору', snapshotsReady || !sourceReady ? '' : 'snapshot')}${checklistItem(!snapshotsReady || sourcedSnapshots === detail.snapshots.length, 'Подтверждения для срезов', !snapshotsReady ? 'Срезов ещё нет' : `${fmt(sourcedSnapshots)} из ${fmt(detail.snapshots.length)} срезов имеют файл-источник`)}`; }
   if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОБАВИТЬ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}${task.details ? ` · ${esc(task.details)}` : ''} · <button class="text-button danger" type="button" data-delete-detail-task="${esc(task.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Для этого концерта задач ещё нет.</div>'}`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)} · ${esc(label('attribution', order.attribution_type))} · <button class="text-button danger" type="button" data-delete-detail-order="${esc(order.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Записей ещё нет.</div>'; }
@@ -669,7 +702,7 @@ async function loadOperations() {
     db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('id,concert_id,actual_spend'),
     db.from('daria_expenses').select('*'),
-    db.from('daria_daily_sales_snapshots').select('concert_id,snapshot_date'),
+    db.from('daria_daily_sales_snapshots').select('concert_id,operator_id,snapshot_date,tickets_sold_total'),
     db.from('daria_source_documents').select('concert_id'),
     db.from('daria_operational_tasks').select('concert_id,title,task_status'),
     db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
@@ -781,7 +814,7 @@ async function loadOperations() {
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
   const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
   renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys, dashboardConcerts);
-  renderDashboardMilestones(state.milestones, dashboardConcerts, Boolean(milestonesResult.error));
+  renderDashboardMilestones(state.milestones, dashboardConcerts, snapshotsResult.data || [], Boolean(milestonesResult.error || snapshotsResult.error));
   renderDashboardChannelAnswer(channelMetricsResult.data || [], dashboardConcerts, Boolean(channelMetricsResult.error));
   renderDashboardOperatorAnswer(operatorsResult.data || [], Boolean(operatorsResult.error));
   const note = byId('dashboard-note');
