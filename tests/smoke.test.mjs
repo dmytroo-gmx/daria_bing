@@ -466,3 +466,8 @@ test('Antonio panel uses the canonical source document name', async () => {
   assert.doesNotMatch(opsApi, /daria_source_documents\?select=id,title/);
   assert.match(opsJs, /item\.source_name/);
 });
+
+test('Antonio panel hides its startup screen after successful loading', async () => {
+  const opsCss = await readFile(new URL('../ops/styles.css', import.meta.url), 'utf8');
+  assert.match(opsCss, /\[hidden\]\{display:none!important\}/);
+});
