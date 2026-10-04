@@ -28,7 +28,7 @@ test('static UI labels are localized for Russian operation', () => {
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
-  assert.match(js, /const detailTabs = \['OVERVIEW', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
+  assert.match(js, /const detailTabs = \['OVERVIEW', 'MILESTONES', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'\]/);
   assert.match(js, /db\.rpc\('daria_concert_metrics'\)/);
   assert.match(js, /const projectedResult = Number\(metric\.gross_revenue/);
   assert.match(js, /data-detail-tab/);
@@ -497,4 +497,17 @@ test('finance has a conservative 30 and 60 day cash plan', async () => {
   assert.match(js, /Продажи билетов не считаются деньгами на счёте/);
   assert.match(migration, /create table if not exists public\.daria_cash_balances/);
   assert.match(migration, /daria_cash_balances_write/);
+});
+
+test('concert control dates compare confirmed sales without making the decision', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0020_control_dates.sql', import.meta.url), 'utf8');
+  assert.match(html, /id="dashboard-milestones"/);
+  assert.match(html, /id="milestone-form"/);
+  assert.match(js, /function milestoneSignal/);
+  assert.match(js, /ТРЕБУЕТСЯ РЕШЕНИЕ ЧЕЛОВЕКА/);
+  assert.match(js, /daria_control_dates/);
+  assert.match(migration, /SALES_TARGET/);
+  assert.match(migration, /MARKETING_START/);
+  assert.match(migration, /DECISION_GATE/);
+  assert.match(migration, /never decides/i);
 });

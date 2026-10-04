@@ -28,7 +28,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], milestones: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -274,6 +274,18 @@ function renderDashboardAttention(staleSnapshots, sourceMissing = [], unknownOrd
   target.innerHTML = items.map(({ concert, text, action, button }) => `<article class="attention-item"><div><b>${esc(concert.event_name)}</b><span>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(text)}</span></div><div><button class="text-button" type="button" data-action="${action}" data-id="${esc(concert.id)}">${button}</button>${action === 'unknown' || openTaskKeys.has(`${concert.id}:${attentionTaskTitle(action)}`) ? '' : `<button class="text-button" type="button" data-attention-task="${action}" data-id="${esc(concert.id)}">СОЗДАТЬ ЗАДАЧУ</button>`}</div></article>`).join('') || '<div class="truth-note">Все активные концерты имеют свежий срез продаж, привязанный файл-источник и указанную вместимость. Это проверка заполненности данных, не прогноз продаж.</div>';
 }
 
+function renderDashboardMilestones(milestones, concerts, unavailable = false) {
+  const target = byId('dashboard-milestones');
+  if (unavailable) { target.innerHTML = '<div class="empty">Контрольные даты недоступны до применения миграции базы.</div>'; return; }
+  const concertById = new Map(concerts.map(concert => [concert.id, concert]));
+  const visible = milestones.filter(item => item.status === 'OPEN' && concertById.has(item.concert_id)).sort((left, right) => String(left.target_date).localeCompare(String(right.target_date))).slice(0, 8);
+  target.innerHTML = visible.map(milestone => {
+    const concert = concertById.get(milestone.concert_id);
+    const sold = state.totals.get(concert.id)?.tickets || 0;
+    return `<article class="attention-item"><div><b>${esc(concert.event_name)} · ${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)}</b><span>${esc(dateLabel(milestone.target_date))} · ${esc(milestone.title)}${milestone.target_tickets == null ? '' : ` · ${fmt(sold)} из ${fmt(milestone.target_tickets)} бил.`}</span></div><div><b>${esc(milestoneSignal(milestone, sold))}</b><button class="text-button" type="button" data-open-milestones="${esc(concert.id)}">ОТКРЫТЬ</button></div></article>`;
+  }).join('') || '<div class="truth-note">Открытых контрольных дат пока нет. Добавь их в карточке концерта: цель продаж, запуск рекламы и дату обязательного решения.</div>';
+}
+
 function renderDashboardChannelAnswer(metrics, concerts, unavailable = false) {
   const target = byId('dashboard-channel-answer');
   if (unavailable) { target.innerHTML = '<div class="empty">Показатели каналов сейчас недоступны; данные не подменены нулями.</div>'; return; }
@@ -339,8 +351,22 @@ function snapshotTimelines(snapshots) {
   }).join('');
 }
 
-const detailTabs = ['OVERVIEW', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
-const detailTabLabels = { OVERVIEW: 'ОБЗОР', CHECKLIST: 'ПРОВЕРКА', TASKS: 'ЗАДАЧИ', SALES: 'ПРОДАЖИ', DAILY: 'СВОДКИ', SOURCES: 'ИСТОЧНИКИ', CHANNELS: 'КАНАЛЫ', FINANCE: 'РАСХОДЫ', TRACKING: 'ССЫЛКИ', ORDERS: 'ЗАКАЗЫ', NOTES: 'ЗАМЕТКИ', HISTORY: 'ИСТОРИЯ' };
+const detailTabs = ['OVERVIEW', 'MILESTONES', 'CHECKLIST', 'TASKS', 'SALES', 'DAILY', 'SOURCES', 'CHANNELS', 'FINANCE', 'TRACKING', 'ORDERS', 'NOTES', 'HISTORY'];
+const detailTabLabels = { OVERVIEW: 'ОБЗОР', MILESTONES: 'КОНТРОЛЬНЫЕ ДАТЫ', CHECKLIST: 'ПРОВЕРКА', TASKS: 'ЗАДАЧИ', SALES: 'ПРОДАЖИ', DAILY: 'СВОДКИ', SOURCES: 'ИСТОЧНИКИ', CHANNELS: 'КАНАЛЫ', FINANCE: 'РАСХОДЫ', TRACKING: 'ССЫЛКИ', ORDERS: 'ЗАКАЗЫ', NOTES: 'ЗАМЕТКИ', HISTORY: 'ИСТОРИЯ' };
+const milestoneTypeLabels = { SALES_TARGET: 'ЦЕЛЬ ПО ПРОДАЖАМ', MARKETING_START: 'ЗАПУСК РЕКЛАМЫ', DECISION_GATE: 'ТОЧКА РЕШЕНИЯ' };
+
+function milestoneSignal(milestone, sold) {
+  if (milestone.status === 'DONE') return 'ВЫПОЛНЕНО';
+  if (milestone.status === 'CANCELLED') return 'ОТМЕНЕНО';
+  const due = milestone.target_date <= new Date().toISOString().slice(0, 10);
+  if (milestone.milestone_type === 'SALES_TARGET') {
+    const missing = Math.max(0, Number(milestone.target_tickets || 0) - Number(sold || 0));
+    if (!missing) return 'ЦЕЛЬ ДОСТИГНУТА';
+    return due ? `ОТСТАВАНИЕ: ${fmt(missing)} БИЛ.` : `ДО ЦЕЛИ: ${fmt(missing)} БИЛ.`;
+  }
+  if (milestone.milestone_type === 'MARKETING_START') return due ? 'СРОК НАСТУПИЛ — ПРОВЕРИТЬ ЗАПУСК' : 'ЗАПЛАНИРОВАНО';
+  return due ? 'ТРЕБУЕТСЯ РЕШЕНИЕ ЧЕЛОВЕКА' : 'РЕШЕНИЕ ЗАПЛАНИРОВАНО';
+}
 
 function checklistItem(done, title, copy, action = '') {
   return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОДАТИ ДЖЕРЕЛО' : 'ДОДАТИ ЗРІЗ'}</button>` : ''}</span></div>`;
@@ -381,6 +407,7 @@ function renderConcertDetail() {
   const tabs = detailTabs.map(tab => `<button type="button" class="detail-tab ${state.detailTab === tab ? 'active' : ''}" data-detail-tab="${tab}">${detailTabLabels[tab]}</button>`).join('');
   let content = '';
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО ОПЛАЧЕННЫХ БИЛЕТОВ', fmt(sold))}${detailValue('ОСТАЛОСЬ', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОЛНЕНИЕ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ТОЧКА БЕЗУБЫТОЧНОСТИ', breakEven == null ? '—' : fmt(breakEven))}${detailValue('ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue(help('ВЫРУЧКА ДО УДЕРЖАНИЙ', 'Сумма оплаченных заказов до комиссии оператора и расходов.'), money(metric.gross_revenue, concert.currency))}${detailValue(help('ВЫРУЧКА ПОСЛЕ УДЕРЖАНИЙ', 'Внесённая сумма после удержаний оператора.'), money(metric.net_revenue, concert.currency))}${detailValue(help('УЖЕ ОПЛАЧЕНО', 'Подтверждённые расходы, которые уже отмечены как оплаченные.'), money(metric.already_spent, concert.currency))}${detailValue(help('ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'Будущие обязательные расходы, которые ещё не оплачены.'), money(metric.mandatory_future, concert.currency))}${detailValue(help('БЛИЖАЙШИЙ ОБЯЗАТЕЛЬНЫЙ ПЛАТЁЖ', 'Самый ранний по сроку неоплаченный обязательный расход.'), nextMandatory ? `${money(nextMandatory.amount, nextMandatory.currency || concert.currency)} · ${nextMandatory.due_date ? dateLabel(nextMandatory.due_date) : 'дата не указана'}` : '—')}${detailValue(help('НЕОБЯЗАТЕЛЬНЫЕ РАСХОДЫ', 'Будущие расходы, которые можно не нести без нарушения обязательств.'), money(metric.optional_future, concert.currency))}${detailValue(help('НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН', 'Та часть необязательных расходов, которую явно включили в плановую себестоимость.'), money(selectedOptional, concert.currency))}${detailValue(help('ВОЗВРАТНЫЕ ЗАЛОГИ', 'Внесённые суммы, которые должны вернуться после выполнения условий. Они не входят в невозвратную себестоимость.'), money(metric.refundable_deposits, concert.currency))}${detailValue(help('РАСХОДЫ НА РЕКЛАМУ', 'Фактически внесённые расходы по кампаниям.'), money(metric.marketing_spend, concert.currency))}${detailValue(help('ПЛАНОВЫЕ НЕВОЗВРАТНЫЕ РАСХОДЫ', 'Уже оплаченные расходы, обязательные будущие и явно включённые необязательные расходы. Возвратные залоги не включены.'), money(metric.projected_nonref_cost, concert.currency))}${detailValue(help('ОПЕРАЦИОННЫЙ ОСТАТОК', 'Расчёт: выручка минус уже оплаченные расходы, обязательные будущие, выбранные необязательные расходы и фактические расходы кампаний.'), money(projectedResult, concert.currency))}</div><div class="truth-note">${concert.break_even_mode === 'CALCULATED' ? 'Точка безубыточности рассчитана из внесённых невозвратных расходов и фактических расходов кампаний. Валюты автоматически не конвертируются.' : detail.server ? 'Показатели рассчитаны в общей базе. Валюты автоматически не конвертируются.' : 'Показатели из базы ещё не загружены; показан доступный локальный итог.'}</div>`;
+  if (state.detailTab === 'MILESTONES') content = `<button class="button subtle" type="button" data-add-milestone="${esc(concert.id)}">+ ДОБАВИТЬ КОНТРОЛЬНУЮ ДАТУ</button><div class="truth-note">Сигнал отставания сравнивает подтверждённые продажи с заданной целью. Он не принимает решение о проведении, переносе или отмене концерта.</div>${detail.milestones.map(milestone => `<div class="detail-line"><b>${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)} · ${esc(milestone.title)}</b><span>${esc(dateLabel(milestone.target_date))}${milestone.target_tickets == null ? '' : ` · цель ${fmt(milestone.target_tickets)} бил.`} · ${esc(milestoneSignal(milestone, sold))}${milestone.notes ? ` · ${esc(milestone.notes)}` : ''} · <button class="text-button" type="button" data-edit-milestone="${esc(milestone.id)}">ИЗМЕНИТЬ</button> · <button class="text-button danger" type="button" data-delete-milestone="${esc(milestone.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Контрольные даты ещё не заданы.</div>'}`;
   if (state.detailTab === 'CHECKLIST') { const sourceReady = detail.documents.length > 0, snapshotsReady = detail.snapshots.length > 0, sourcedSnapshots = detail.snapshots.filter(snapshot => snapshot.source_document_id).length; content = `<div class="truth-note">Это техническая готовность данных, а не оценка финансового состояния концерта.</div>${checklistItem(sourceReady, 'Источник для концерта', sourceReady ? `${fmt(detail.documents.length)} файлов привязано` : 'Сначала нужен файл от оператора или Meta', sourceReady ? '' : 'source')}${checklistItem(snapshotsReady, 'Ежедневный срез продаж', snapshotsReady ? `${fmt(detail.snapshots.length)} срезов внесено` : 'После источника внесите первый срез по одному оператору', snapshotsReady || !sourceReady ? '' : 'snapshot')}${checklistItem(!snapshotsReady || sourcedSnapshots === detail.snapshots.length, 'Подтверждения для срезов', !snapshotsReady ? 'Срезов ещё нет' : `${fmt(sourcedSnapshots)} из ${fmt(detail.snapshots.length)} срезов имеют файл-источник`)}`; }
   if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОБАВИТЬ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}${task.details ? ` · ${esc(task.details)}` : ''} · <button class="text-button danger" type="button" data-delete-detail-task="${esc(task.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Для этого концерта задач ещё нет.</div>'}`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)} · ${esc(label('attribution', order.attribution_type))} · <button class="text-button danger" type="button" data-delete-detail-order="${esc(order.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Записей ещё нет.</div>'; }
@@ -395,6 +422,10 @@ function renderConcertDetail() {
   document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
   const addSnapshot = document.querySelector('[data-add-snapshot]');
   if (addSnapshot) addSnapshot.addEventListener('click', () => openSnapshotForm(concert));
+  const addMilestone = document.querySelector('[data-add-milestone]');
+  if (addMilestone) addMilestone.addEventListener('click', () => openMilestoneForm(concert));
+  document.querySelectorAll('[data-edit-milestone]').forEach(button => button.addEventListener('click', () => openMilestoneForm(concert, detail.milestones.find(item => item.id === button.dataset.editMilestone))));
+  document.querySelectorAll('[data-delete-milestone]').forEach(button => button.addEventListener('click', () => { const milestone = detail.milestones.find(item => item.id === button.dataset.deleteMilestone); if (milestone) deleteRecord({ table: 'daria_control_dates', id: milestone.id, label: milestone.title, refresh: async () => { await Promise.all([loadOperations(), selectConcert(concert.id)]); } }); }));
   document.querySelectorAll('[data-detail-action]').forEach(button => button.addEventListener('click', async () => {
     if (button.dataset.detailAction === 'source') { showView('documents'); await loadOperations(); openDocumentForm(concert); }
     if (button.dataset.detailAction === 'snapshot') openSnapshotForm(concert);
@@ -418,23 +449,23 @@ async function selectConcert(id) {
   state.selectedConcertId = id;
   state.detail = null; renderConcertDetail(); renderConcerts();
   const fallback = state.totals.get(id) || { tickets: 0, revenue: 0 };
-  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], tasks: [], expenses: [], campaigns: [], channels: [], links: [] }; renderConcertDetail(); return; }
-  const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult, tasksResult, channelsResult, reportsResult] = await Promise.all([
-    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false }), db.from('daria_sales_channels').select('id,name'), db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false })
+  if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], tasks: [], milestones: [], expenses: [], campaigns: [], channels: [], links: [] }; renderConcertDetail(); return; }
+  const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult, tasksResult, channelsResult, reportsResult, milestonesResult] = await Promise.all([
+    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false }), db.from('daria_sales_channels').select('id,name'), db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false }), db.from('daria_control_dates').select('*').eq('concert_id', id).order('target_date')
   ]);
   const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
   const allDocuments = documentsResult.data || [];
   const snapshots = (snapshotsResult.data || []).map(snapshot => ({ ...snapshot, operator_name: (operatorsResult.data || []).find(operator => operator.id === snapshot.operator_id)?.name, source_name: allDocuments.find(document => document.id === snapshot.source_document_id)?.source_name }));
   const sourceDocumentIds = new Set(snapshots.map(snapshot => snapshot.source_document_id).filter(Boolean));
   const documents = allDocuments.filter(document => document.concert_id === id || sourceDocumentIds.has(document.id));
-  const relatedIds = [id, ...(ordersResult.data || []).map(item => item.id), ...snapshots.map(item => item.id), ...(tasksResult.data || []).map(item => item.id), ...(expensesResult.data || []).map(item => item.id), ...(campaignsResult.data || []).map(item => item.id), ...(linksResult.data || []).map(item => item.id)];
+  const relatedIds = [id, ...(ordersResult.data || []).map(item => item.id), ...snapshots.map(item => item.id), ...(tasksResult.data || []).map(item => item.id), ...(milestonesResult.data || []).map(item => item.id), ...(expensesResult.data || []).map(item => item.id), ...(campaignsResult.data || []).map(item => item.id), ...(linksResult.data || []).map(item => item.id)];
   const [auditResult, profilesResult] = await Promise.all([
     db.from('daria_audit_log').select('action,entity_type,entity_id,user_id,created_at').in('entity_id', relatedIds).order('created_at', { ascending: false }).limit(30),
     db.from('daria_user_profiles').select('user_id,display_name')
   ]);
   const actorNames = new Map((profilesResult.data || []).map(profile => [profile.user_id, profile.display_name]));
   const audit = (auditResult.data || []).map(entry => ({ ...entry, actor_name: actorNames.get(entry.user_id) || '' }));
-  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, tasks: tasksResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], channels: channelsResult.data || [], links: linksResult.data || [], confirmedReports: reportsResult.error ? [] : reportsResult.data || [], audit, auditError: auditResult.error };
+  state.detail = { server: !metricsResult.error, metric, orders: ordersResult.data || [], snapshots, documents, tasks: tasksResult.data || [], milestones: milestonesResult.error ? [] : milestonesResult.data || [], expenses: expensesResult.data || [], campaigns: campaignsResult.data || [], channels: channelsResult.data || [], links: linksResult.data || [], confirmedReports: reportsResult.error ? [] : reportsResult.data || [], audit, auditError: auditResult.error };
   renderConcertDetail();
   renderConcerts();
 }
@@ -514,6 +545,45 @@ async function saveSnapshot(event) {
   form.hidden = true; setStatus('Щоденний зріз збережено з прив’язаним джерелом'); await selectConcert(raw.concert_id);
 }
 
+function syncMilestoneTicketField() {
+  const form = byId('milestone-form');
+  const isSalesTarget = form.elements.milestone_type.value === 'SALES_TARGET';
+  byId('milestone-ticket-field').hidden = !isSalesTarget;
+  form.elements.target_tickets.required = isSalesTarget;
+  if (!isSalesTarget) form.elements.target_tickets.value = '';
+}
+
+function openMilestoneForm(concert, milestone = null) {
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать контрольные даты.')) return;
+  const form = byId('milestone-form');
+  form.reset();
+  form.hidden = false;
+  form.elements.id.value = milestone?.id || '';
+  form.elements.concert_id.value = concert.id;
+  ['milestone_type', 'target_date', 'title', 'target_tickets', 'status', 'notes'].forEach(field => { form.elements[field].value = milestone?.[field] ?? ''; });
+  if (!milestone) { form.elements.milestone_type.value = 'SALES_TARGET'; form.elements.status.value = 'OPEN'; }
+  byId('milestone-form-mode').textContent = milestone ? 'РЕДАКТИРОВАНИЕ КОНТРОЛЬНОЙ ДАТЫ' : 'НОВАЯ КОНТРОЛЬНАЯ ДАТА';
+  byId('milestone-form-title').textContent = milestone ? milestone.title : `Добавить точку контроля · ${concert.event_name}`;
+  byId('milestone-form-note').textContent = '';
+  syncMilestoneTicketField();
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveMilestone(event) {
+  event.preventDefault();
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить контрольную дату.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  if (raw.milestone_type === 'SALES_TARGET' && Number(raw.target_tickets) < 1) { byId('milestone-form-note').textContent = 'Для цели продаж укажи количество билетов.'; return; }
+  const payload = { concert_id: raw.concert_id, milestone_type: raw.milestone_type, target_date: raw.target_date, title: raw.title.trim(), target_tickets: raw.milestone_type === 'SALES_TARGET' ? Number(raw.target_tickets) : null, status: raw.status, notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('milestone-form-note').textContent = 'Сохранение…';
+  const result = raw.id ? await db.from('daria_control_dates').update(payload).eq('id', raw.id) : await db.from('daria_control_dates').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('milestone-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true;
+  setStatus(raw.id ? 'Контрольная дата обновлена' : 'Контрольная дата добавлена');
+  await Promise.all([loadOperations(), selectConcert(raw.concert_id)]);
+}
+
 function taskIsOpen(task) { return ['OPEN', 'IN_PROGRESS'].includes(task.task_status); }
 
 function renderTasks() {
@@ -583,6 +653,7 @@ async function loadOperations() {
     ['m-active', 'm-tickets', 'm-revenue', 'm-spend', 'm-mandatory', 'm-projected', 'm-risk', 'm-stale'].forEach(id => { byId(id).textContent = '—'; });
     byId('dashboard-concerts').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть операционные данные.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть проверку данных.</div>';
+    byId('dashboard-milestones').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть контрольные даты.</div>';
     byId('dashboard-channel-answer').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть подтверждённые показатели каналов.</div>';
     byId('dashboard-operator-answer').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть условия билетных операторов.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы открыть реестр концертов.</div>';
@@ -590,9 +661,10 @@ async function loadOperations() {
     byId('dashboard-note').textContent = 'Данные скрыты правилами доступа. Пустой ответ без входа не трактуется как ноль.';
     state.concerts = [];
     state.totals = new Map();
+    state.milestones = [];
     return;
   }
-  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, unattributedReportsResult, channelMetricsResult, operatorsResult] = await Promise.all([
+  const [concertsResult, ordersResult, campaignsResult, expensesResult, snapshotsResult, documentsResult, tasksResult, reportsResult, unattributedReportsResult, channelMetricsResult, operatorsResult, milestonesResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,status,attribution_type'),
     db.from('daria_campaigns').select('id,concert_id,actual_spend'),
@@ -603,7 +675,8 @@ async function loadOperations() {
     db.from('daria_campaign_confirmed_reports').select('campaign_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
     db.from('daria_unattributed_operator_reports').select('concert_id,operator_id,reported_on,confirmed_orders,confirmed_tickets,confirmed_revenue,currency,created_at'),
     db.rpc('daria_channel_metrics'),
-    db.from('daria_ticketing_operators').select('name,legacy_recommendation,contract_notes,notes,last_offer_date').order('name')
+    db.from('daria_ticketing_operators').select('name,legacy_recommendation,contract_notes,notes,last_offer_date').order('name'),
+    db.from('daria_control_dates').select('*').order('target_date')
   ]);
   const errors = [];
   if (concertsResult.error) errors.push(`concerts: ${concertsResult.error.message}`);
@@ -615,9 +688,11 @@ async function loadOperations() {
   if (concertsResult.error) {
     byId('dashboard-concerts').innerHTML = '<div class="empty">Нет доступа к реестру концертов. Войдите в рабочий аккаунт.</div>';
     byId('dashboard-attention').innerHTML = '<div class="empty">Нет доступа к реестру концертов.</div>';
+    byId('dashboard-milestones').innerHTML = '<div class="empty">Нет доступа к контрольным датам.</div>';
     byId('concerts-list').innerHTML = '<div class="empty">Не удалось загрузить концерты.</div>';
   } else state.concerts = concertsResult.data || [];
   state.totals = new Map();
+  state.milestones = milestonesResult.error ? [] : milestonesResult.data || [];
   const paidOrders = ordersResult.error ? [] : (ordersResult.data || []).filter(order => order.status === 'PAID');
   const confirmedReports = reportsResult.error ? [] : reportsResult.data || [];
   const unattributedReports = unattributedReportsResult.error ? [] : unattributedReportsResult.data || [];
@@ -706,6 +781,7 @@ async function loadOperations() {
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
   const openTaskKeys = new Set((tasksResult.data || []).filter(task => taskIsOpen(task)).map(task => `${task.concert_id}:${task.title}`));
   renderDashboardAttention(staleSnapshots, sourceMissing, unknownOrders, Boolean(snapshotsResult.error || documentsResult.error || concertsResult.error), openTaskKeys, dashboardConcerts);
+  renderDashboardMilestones(state.milestones, dashboardConcerts, Boolean(milestonesResult.error));
   renderDashboardChannelAnswer(channelMetricsResult.data || [], dashboardConcerts, Boolean(channelMetricsResult.error));
   renderDashboardOperatorAnswer(operatorsResult.data || [], Boolean(operatorsResult.error));
   const note = byId('dashboard-note');
@@ -1842,6 +1918,9 @@ function bindEvents() {
   byId('add-task').addEventListener('click', async () => { await loadOperations(); openTaskForm(); });
   byId('cancel-task').addEventListener('click', () => { byId('task-form').hidden = true; });
   byId('task-form').addEventListener('submit', saveTask);
+  byId('cancel-milestone').addEventListener('click', () => { byId('milestone-form').hidden = true; });
+  byId('milestone-form').addEventListener('submit', saveMilestone);
+  byId('milestone-form').elements.milestone_type.addEventListener('change', syncMilestoneTicketField);
   byId('task-status-filter').addEventListener('change', renderTasks);
   byId('task-list').addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-task]');
@@ -1883,6 +1962,13 @@ function bindEvents() {
     if (button.dataset.action === 'edit') { showView('concerts'); openConcertForm(concert); return; }
     showView('concerts');
     selectConcert(button.dataset.id);
+  });
+  byId('dashboard-milestones').addEventListener('click', event => {
+    const button = event.target.closest('[data-open-milestones]');
+    if (!button) return;
+    state.detailTab = 'MILESTONES';
+    showView('concerts');
+    selectConcert(button.dataset.openMilestones);
   });
   byId('add-order').addEventListener('click', () => openOrderForm());
   byId('add-unattributed-operator-report').addEventListener('click', openUnattributedOperatorReportForm);

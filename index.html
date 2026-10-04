@@ -35,6 +35,8 @@
       </div>
       <div class="panel-title compact"><div><p class="eyebrow">ВНИМАНИЕ К ДАННЫМ</p><h2>Что требует подтверждения</h2></div></div>
       <div class="ops-concerts attention-list" id="dashboard-attention"><div class="empty">Загрузка операционных данных…</div></div>
+      <div class="panel-title compact"><div><p class="eyebrow">КОНТРОЛЬНЫЕ ДАТЫ</p><h2>План продаж и точки решения</h2></div></div>
+      <div class="ops-concerts attention-list" id="dashboard-milestones"><div class="empty">Загрузка контрольных дат…</div></div>
       <div class="panel-title compact"><div><p class="eyebrow">КАНАЛЫ</p><h2>Быстрый ответ по подтверждённым продажам</h2></div></div>
       <div class="ops-concerts attention-list" id="dashboard-channel-answer"><div class="empty">Загрузка показателей каналов…</div></div>
       <div class="panel-title compact"><div><p class="eyebrow">БИЛЕТНЫЕ ОПЕРАТОРЫ</p><h2>Зафиксированные рабочие выводы</h2></div></div>
@@ -68,6 +70,11 @@
         <div class="editor-head"><div><p class="eyebrow">ЩОДЕННИЙ ЗРІЗ ПРОДАЖІВ</p><h2 id="snapshot-form-title">Додати снапшот</h2></div><button class="close" id="cancel-snapshot" type="button" aria-label="Закрити">×</button></div>
         <input name="concert_id" type="hidden"><label>ДАТА ЗРІЗУ<input required name="snapshot_date" type="date"></label><label>ОПЕРАТОР<select required name="operator_id" id="snapshot-operator"></select></label><label>ПРОДАНО ВСЬОГО<input required name="tickets_sold_total" min="0" type="number"></label><label>ВИРУЧКА ВСЬОГО<input required name="revenue_total" min="0" step="0.01" type="number"></label><label>ВАЛЮТА<input required name="currency" maxlength="3" value="PLN"></label><label class="full">ДОКУМЕНТ-ДЖЕРЕЛО<select required name="source_document_id" id="snapshot-source-document"></select></label><label class="full">КОМЕНТАР ДО ДЖЕРЕЛА<textarea name="source_note" rows="2" placeholder="Наприклад: сторінка 2 операторського PDF-звіту"></textarea></label>
         <div class="truth-note full">Зріз показує загальний результат конкретного оператора на дату. Не додавай сюди загальні суми різних операторів як один рядок.</div><div class="full editor-actions"><button class="button" type="submit">ЗБЕРЕГТИ ЗРІЗ</button><span class="form-note" id="snapshot-form-note"></span></div>
+      </form>
+      <form class="editor" id="milestone-form" hidden>
+        <div class="editor-head"><div><p class="eyebrow" id="milestone-form-mode">НОВАЯ КОНТРОЛЬНАЯ ДАТА</p><h2 id="milestone-form-title">Добавить точку контроля</h2></div><button class="close" id="cancel-milestone" type="button" aria-label="Закрыть">×</button></div>
+        <input name="id" type="hidden"><input name="concert_id" type="hidden"><label>ТИП<select required name="milestone_type"><option value="SALES_TARGET">ЦЕЛЬ ПО ПРОДАЖАМ</option><option value="MARKETING_START">ЗАПУСК РЕКЛАМЫ</option><option value="DECISION_GATE">ТОЧКА РЕШЕНИЯ</option></select></label><label>ДАТА<input required name="target_date" type="date"></label><label class="full">НАЗВАНИЕ<input required name="title" maxlength="200" placeholder="Например: первая проверка темпа продаж"></label><label id="milestone-ticket-field">ЦЕЛЬ, БИЛЕТОВ<input name="target_tickets" min="1" type="number"></label><label>СОСТОЯНИЕ<select required name="status"><option value="OPEN">ОТКРЫТА</option><option value="DONE">ВЫПОЛНЕНА</option><option value="CANCELLED">ОТМЕНЕНА</option></select></label><label class="full">ЗАМЕТКИ<textarea name="notes" rows="3"></textarea></label>
+        <div class="truth-note full">Система сравнивает подтверждённые продажи с заданной целью и показывает отставание. Решение проводить, переносить или отменять концерт принимает человек.</div><div class="full editor-actions"><button class="button" type="submit">СОХРАНИТЬ</button><span class="form-note" id="milestone-form-note"></span></div>
       </form>
     </section>
 
