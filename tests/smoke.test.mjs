@@ -448,7 +448,7 @@ test('Antonio panel exposes a secret-safe database readiness check', async () =>
     readFile(new URL('../api/ops-health.js', import.meta.url), 'utf8'),
     readFile(new URL('../server/ops-store.js', import.meta.url), 'utf8')
   ]);
-  assert.match(health, /daria_ops_users\?select=id&limit=1/);
+  assert.match(health, /daria_ops_users\?select=id,name,role,telegram_user_id,active&active=eq\.true&limit=1/);
   assert.match(health, /database: 'ready'/);
   assert.doesNotMatch(health, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/);
   assert.match(store, /databaseCode/);
