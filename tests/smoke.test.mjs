@@ -519,3 +519,19 @@ test('sales pace uses confirmed operator snapshots and stays labelled as a calcu
   assert.match(js, /Расчётный темп/);
   assert.match(js, /не гарантированный прогноз/);
 });
+
+test('Telegram reminders are scheduled, protected and deduplicated', async () => {
+  const [api, migration, vercel] = await Promise.all([
+    readFile(new URL('../api/ops-reminders.js', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/0021_ops_reminders.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../vercel.json', import.meta.url), 'utf8')
+  ]);
+  assert.match(api, /CRON_SECRET/);
+  assert.match(api, /TELEGRAM_BOT_TOKEN/);
+  assert.match(api, /sendMessage/);
+  assert.match(api, /daria_ops_reminder_log/);
+  assert.match(api, /WAITING_FOR_DECISION/);
+  assert.match(migration, /unique \(ops_user_id, entity_type, entity_id, reminder_date\)/);
+  assert.match(vercel, /\/api\/ops-reminders/);
+  assert.match(vercel, /0 6 \* \* \*/);
+});
