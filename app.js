@@ -28,7 +28,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -1577,6 +1577,36 @@ function formatCurrencyMap(totals) {
   return totals.size ? [...totals.entries()].map(([currency, amount]) => money(amount, currency)).join(' · ') : '0 zł';
 }
 
+function subtractCurrencyMaps(available, required) {
+  const currencies = new Set([...available.keys(), ...required.keys()]);
+  const result = new Map();
+  currencies.forEach(currency => result.set(currency, (available.get(currency) || 0) - (required.get(currency) || 0)));
+  return result;
+}
+
+function dateAfterDays(days) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function mandatoryDueWithin(days) {
+  const cutoff = dateAfterDays(days);
+  return state.expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status) && expense.due_date && expense.due_date <= cutoff);
+}
+
+function renderCashPlan() {
+  const current = amountMap(state.cashBalances);
+  const due30 = amountMap(mandatoryDueWithin(30));
+  const due60 = amountMap(mandatoryDueWithin(60));
+  byId('cash-current').textContent = state.cashBalances.length ? formatCurrencyMap(current) : 'не внесено';
+  byId('cash-due-30').textContent = formatCurrencyMap(due30);
+  byId('cash-gap-30').textContent = state.cashBalances.length ? formatCurrencyMap(subtractCurrencyMaps(current, due30)) : '—';
+  byId('cash-gap-60').textContent = state.cashBalances.length ? formatCurrencyMap(subtractCurrencyMaps(current, due60)) : '—';
+  byId('cash-balance-list').innerHTML = state.cashBalances.map(balance => `<article class="expense-row"><div><small>ОСТАТОК ПО СОСТОЯНИЮ НА ${esc(dateLabel(balance.as_of_date))}</small><h3>${esc(balance.account_name)}</h3><small>${esc(balance.notes || 'без заметки')}</small></div><strong class="expense-amount">${money(balance.amount, balance.currency)}</strong><div class="expense-meta"><span>ФАКТИЧЕСКИЙ ОСТАТОК</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-cash-balance="${esc(balance.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-cash-balance="${esc(balance.id)}">УДАЛИТЬ</button></div></article>`).join('') || '<div class="empty">Остатки по счетам и кассам ещё не внесены.</div>';
+}
+
 function populateConcertOptions() {
   const options = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
   byId('expense-concert').innerHTML = options;
@@ -1598,6 +1628,7 @@ function renderFinance() {
   byId('f-optional').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.payment_status !== 'PAID'));
   byId('f-optional-note').textContent = `из них в плане: ${currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost && !['PAID', 'REFUNDED'].includes(expense.payment_status)))}`;
   byId('f-deposits').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'REFUNDABLE_DEPOSIT' && expense.payment_status !== 'REFUNDED'));
+  renderCashPlan();
 }
 
 async function loadFinance() {
@@ -1607,20 +1638,58 @@ async function loadFinance() {
     byId('expense-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр витрат.</div>';
     byId('finance-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як відсутність витрат.';
     state.expenses = [];
+    state.cashBalances = [];
     return;
   }
   if (!state.concerts.length) await loadOperations();
-  const { data, error } = await db.from('daria_expenses').select('*').order('due_date', { ascending: true, nullsFirst: false });
+  const [expensesResult, cashResult] = await Promise.all([
+    db.from('daria_expenses').select('*').order('due_date', { ascending: true, nullsFirst: false }),
+    db.from('daria_cash_balances').select('*').order('as_of_date', { ascending: false }).order('account_name')
+  ]);
+  const { data, error } = expensesResult;
   if (error) {
     byId('expense-list').innerHTML = `<div class="empty">Не вдалося завантажити витрати: ${esc(error.message)}</div>`;
     byId('finance-note').classList.add('error');
     return;
   }
   state.expenses = data || [];
+  state.cashBalances = cashResult.error ? [] : cashResult.data || [];
   populateConcertOptions();
   renderFinance();
   byId('finance-note').classList.remove('error');
   byId('finance-note').textContent = 'Факт: PAID. Майбутні обов’язкові, опційні витрати та поворотні застави показані окремо. Валюти не змішуються.';
+  byId('cash-plan-note').classList.toggle('error', Boolean(cashResult.error));
+  byId('cash-plan-note').textContent = cashResult.error ? 'Платёжный календарь ожидает применение миграции 0019_cash_planning.sql.' : 'Платёжный календарь использует внесённые остатки и обязательные расходы со сроком. Продажи билетов не считаются деньгами на счёте, валюты не смешиваются.';
+}
+
+function openCashBalanceForm(balance = null) {
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать остатки.')) return;
+  const form = byId('cash-balance-form');
+  form.reset();
+  form.hidden = false;
+  form.elements.id.value = balance?.id || '';
+  ['account_name', 'amount', 'currency', 'as_of_date', 'notes'].forEach(field => { form.elements[field].value = balance?.[field] ?? ''; });
+  if (!balance) { form.elements.currency.value = 'PLN'; form.elements.as_of_date.value = new Date().toISOString().slice(0, 10); }
+  byId('cash-balance-form-mode').textContent = balance ? 'РЕДАКТИРОВАНИЕ ОСТАТКА' : 'НОВЫЙ ОСТАТОК';
+  byId('cash-balance-form-title').textContent = balance ? balance.account_name : 'Добавить деньги на счёте или в кассе';
+  byId('cash-balance-form-note').textContent = '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function saveCashBalance(event) {
+  event.preventDefault();
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить остаток.')) return;
+  const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
+  const payload = { account_name: raw.account_name.trim(), amount: Number(raw.amount), currency: raw.currency.trim().toUpperCase() || 'PLN', as_of_date: raw.as_of_date, notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  byId('cash-balance-form-note').textContent = 'Сохранение…';
+  const result = raw.id ? await db.from('daria_cash_balances').update(payload).eq('id', raw.id) : await db.from('daria_cash_balances').insert(payload);
+  submit.disabled = false;
+  if (result.error) { byId('cash-balance-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true;
+  setStatus(raw.id ? 'Остаток обновлён' : 'Остаток добавлен');
+  await loadFinance();
 }
 
 function openExpenseForm(expense = null) {
@@ -1901,6 +1970,15 @@ function bindEvents() {
     if (button) openOperatorForm(state.operators.find(operator => operator.id === button.dataset.editOperator));
   });
   byId('add-expense').addEventListener('click', () => openExpenseForm());
+  byId('add-cash-balance').addEventListener('click', () => openCashBalanceForm());
+  byId('cancel-cash-balance').addEventListener('click', () => { byId('cash-balance-form').hidden = true; });
+  byId('cash-balance-form').addEventListener('submit', saveCashBalance);
+  byId('cash-balance-list').addEventListener('click', event => {
+    const remove = event.target.closest('[data-delete-cash-balance]');
+    if (remove) { const balance = state.cashBalances.find(item => item.id === remove.dataset.deleteCashBalance); if (balance) deleteRecord({ table: 'daria_cash_balances', id: balance.id, label: balance.account_name, refresh: loadFinance }); return; }
+    const edit = event.target.closest('[data-edit-cash-balance]');
+    if (edit) openCashBalanceForm(state.cashBalances.find(item => item.id === edit.dataset.editCashBalance));
+  });
   byId('cancel-expense').addEventListener('click', () => { byId('expense-form').hidden = true; });
   byId('expense-form').addEventListener('submit', saveExpense);
   byId('expense-concert-filter').addEventListener('change', renderFinance);

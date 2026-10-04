@@ -6,7 +6,7 @@ module.exports = async function handler(request, response) {
 
   try {
     await Promise.all([
-      store.select('daria_ops_users?active=eq.true&select=id,name,role&order=name.asc&limit=1'),
+      store.select('daria_ops_users?active=eq.true&select=id,name,role,telegram_user_id&order=name.asc&limit=1'),
       store.select('daria_operational_tasks?select=id,title,details,concert_id,task_status,priority,due_date,assignee_ops_user_id,blocked_by_ops_user_id,created_by_ops_user_id,created_at,updated_at&order=due_date.asc.nullslast,created_at.desc&limit=1'),
       store.select('daria_concerts?select=id,event_name,city,event_date,venue,status,risk_status&order=event_date.asc.nullslast&limit=1'),
       store.select('daria_source_documents?select=id,source_name,document_type,source_date,notes,created_at&order=created_at.desc&limit=1')

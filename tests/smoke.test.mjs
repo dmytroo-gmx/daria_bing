@@ -469,5 +469,32 @@ test('Antonio panel uses the canonical source document name', async () => {
 
 test('Antonio panel hides its startup screen after successful loading', async () => {
   const opsCss = await readFile(new URL('../ops/styles.css', import.meta.url), 'utf8');
-  assert.match(opsCss, /\[hidden\]\{display:none!important\}/);
+  assert.match(opsCss, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});
+
+test('Antonio panel follows Legacy Brain branding and business titles', async () => {
+  const [opsCss, opsJs, migration] = await Promise.all([
+    readFile(new URL('../ops/styles.css', import.meta.url), 'utf8'),
+    readFile(new URL('../ops/app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/0018_ops_business_roles.sql', import.meta.url), 'utf8')
+  ]);
+  for (const color of ['#090909', '#11110f', '#c8a15d', '#f0d39a', '#f4f0e8']) assert.match(opsCss, new RegExp(color));
+  assert.match(opsJs, /Основатель, продюсер/);
+  assert.match(opsJs, /Руководитель аппарата и цифровых проектов/);
+  assert.match(opsJs, /Букинг-менеджер/);
+  assert.match(migration, /7803517817/);
+  assert.match(migration, /707507251/);
+  assert.match(migration, /Daria Bing/);
+});
+
+test('finance has a conservative 30 and 60 day cash plan', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0019_cash_planning.sql', import.meta.url), 'utf8');
+  assert.match(html, /id="cash-current"/);
+  assert.match(html, /id="cash-gap-30"/);
+  assert.match(html, /id="cash-gap-60"/);
+  assert.match(js, /function mandatoryDueWithin/);
+  assert.match(js, /daria_cash_balances/);
+  assert.match(js, /Продажи билетов не считаются деньгами на счёте/);
+  assert.match(migration, /create table if not exists public\.daria_cash_balances/);
+  assert.match(migration, /daria_cash_balances_write/);
 });
