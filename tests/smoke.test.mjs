@@ -448,8 +448,21 @@ test('Antonio panel exposes a secret-safe database readiness check', async () =>
     readFile(new URL('../api/ops-health.js', import.meta.url), 'utf8'),
     readFile(new URL('../server/ops-store.js', import.meta.url), 'utf8')
   ]);
-  assert.match(health, /daria_ops_users\?select=id,name,role,telegram_user_id,active&active=eq\.true&limit=1/);
+  assert.match(health, /daria_ops_users\?active=eq\.true/);
+  assert.match(health, /daria_operational_tasks\?select=/);
+  assert.match(health, /daria_concerts\?select=/);
+  assert.match(health, /daria_source_documents\?select=id,source_name/);
   assert.match(health, /database: 'ready'/);
   assert.doesNotMatch(health, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/);
   assert.match(store, /databaseCode/);
+});
+
+test('Antonio panel uses the canonical source document name', async () => {
+  const [opsApi, opsJs] = await Promise.all([
+    readFile(new URL('../api/ops-data.js', import.meta.url), 'utf8'),
+    readFile(new URL('../ops/app.js', import.meta.url), 'utf8')
+  ]);
+  assert.match(opsApi, /daria_source_documents\?select=id,source_name/);
+  assert.doesNotMatch(opsApi, /daria_source_documents\?select=id,title/);
+  assert.match(opsJs, /item\.source_name/);
 });

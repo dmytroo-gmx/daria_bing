@@ -5,8 +5,13 @@ module.exports = async function handler(request, response) {
   if (request.method !== 'GET') return response.status(405).json({ ok: false, error: 'method_not_allowed' });
 
   try {
-    await store.select('daria_ops_users?select=id,name,role,telegram_user_id,active&active=eq.true&limit=1');
-    return response.status(200).json({ ok: true, database: 'ready', check: 'full_profile' });
+    await Promise.all([
+      store.select('daria_ops_users?active=eq.true&select=id,name,role&order=name.asc&limit=1'),
+      store.select('daria_operational_tasks?select=id,title,details,concert_id,task_status,priority,due_date,assignee_ops_user_id,blocked_by_ops_user_id,created_by_ops_user_id,created_at,updated_at&order=due_date.asc.nullslast,created_at.desc&limit=1'),
+      store.select('daria_concerts?select=id,event_name,city,event_date,venue,status,risk_status&order=event_date.asc.nullslast&limit=1'),
+      store.select('daria_source_documents?select=id,source_name,document_type,source_date,notes,created_at&order=created_at.desc&limit=1')
+    ]);
+    return response.status(200).json({ ok: true, database: 'ready', check: 'all_panel_queries' });
   } catch (error) {
     return response.status(503).json({
       ok: false,
