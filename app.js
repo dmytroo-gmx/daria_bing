@@ -15,7 +15,7 @@ const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED
 const labels = {
   status: { DRAFT: 'ЧЕРНОВИК', PLANNED: 'ЗАПЛАНИРОВАН', ON_SALE: 'В ПРОДАЖЕ', ACTIVE: 'В РАБОТЕ', ON_HOLD: 'НА ПАУЗЕ', POSTPONED: 'ПЕРЕНЕСЁН', CANCELLED: 'ОТМЕНЁН', COMPLETED: 'ЗАВЕРШЁН' },
   risk: { GRAY: 'НЕ ОЦЕНЁН', GREEN: 'НИЗКИЙ РИСК', YELLOW: 'ТРЕБУЕТ ВНИМАНИЯ', RED: 'ВЫСОКИЙ РИСК' },
-  taskStatus: { OPEN: 'ОТКРЫТА', IN_PROGRESS: 'В РАБОТЕ', DONE: 'ВЫПОЛНЕНА', CANCELLED: 'ОТМЕНЕНА' },
+  taskStatus: { OPEN: 'ОТКРЫТА', IN_PROGRESS: 'В РАБОТЕ', WAITING_FOR_DECISION: 'ЖДЁТ РЕШЕНИЯ', DONE: 'ВЫПОЛНЕНА', CANCELLED: 'ОТМЕНЕНА' },
   priority: { LOW: 'НИЗКИЙ', NORMAL: 'ОБЫЧНЫЙ', HIGH: 'ВЫСОКИЙ', CRITICAL: 'КРИТИЧЕСКИЙ' },
   orderStatus: { PAID: 'ОПЛАЧЕН', PENDING: 'ОЖИДАЕТ ОПЛАТЫ', REFUNDED: 'ВОЗВРАТ', CANCELLED: 'ОТМЕНЁН' },
   attribution: { UNKNOWN: 'ИСТОЧНИК НЕ УСТАНОВЛЕН', CONFIRMED: 'ПОДТВЕРЖДЁННЫЙ ИСТОЧНИК', PLATFORM_ATTRIBUTED: 'УКАЗАНО ПЛАТФОРМОЙ' },
@@ -28,7 +28,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], milestones: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], milestones: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [], opsUsers: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -442,7 +442,7 @@ function renderConcertDetail() {
   if (state.detailTab === 'OVERVIEW') content = `<div class="detail-grid">${detailValue('ПРОДАНО ОПЛАЧЕННЫХ БИЛЕТОВ', fmt(sold))}${detailValue('ОСТАЛОСЬ', remaining == null ? '—' : fmt(remaining))}${detailValue('ЗАПОЛНЕНИЕ', capacity ? `${Math.round(sold / capacity * 100)}%` : '—')}${detailValue('ТОЧКА БЕЗУБЫТОЧНОСТИ', breakEven == null ? '—' : fmt(breakEven))}${detailValue('ДО ТОЧКИ БЕЗУБЫТОЧНОСТИ', breakNeeded == null ? '—' : fmt(breakNeeded))}${detailValue(help('ВЫРУЧКА ДО УДЕРЖАНИЙ', 'Сумма оплаченных заказов до комиссии оператора и расходов.'), money(metric.gross_revenue, concert.currency))}${detailValue(help('ВЫРУЧКА ПОСЛЕ УДЕРЖАНИЙ', 'Внесённая сумма после удержаний оператора.'), money(metric.net_revenue, concert.currency))}${detailValue(help('УЖЕ ОПЛАЧЕНО', 'Подтверждённые расходы, которые уже отмечены как оплаченные.'), money(metric.already_spent, concert.currency))}${detailValue(help('ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'Будущие обязательные расходы, которые ещё не оплачены.'), money(metric.mandatory_future, concert.currency))}${detailValue(help('БЛИЖАЙШИЙ ОБЯЗАТЕЛЬНЫЙ ПЛАТЁЖ', 'Самый ранний по сроку неоплаченный обязательный расход.'), nextMandatory ? `${money(nextMandatory.amount, nextMandatory.currency || concert.currency)} · ${nextMandatory.due_date ? dateLabel(nextMandatory.due_date) : 'дата не указана'}` : '—')}${detailValue(help('НЕОБЯЗАТЕЛЬНЫЕ РАСХОДЫ', 'Будущие расходы, которые можно не нести без нарушения обязательств.'), money(metric.optional_future, concert.currency))}${detailValue(help('НЕОБЯЗАТЕЛЬНО, ВКЛЮЧЕНО В ПЛАН', 'Та часть необязательных расходов, которую явно включили в плановую себестоимость.'), money(selectedOptional, concert.currency))}${detailValue(help('ВОЗВРАТНЫЕ ЗАЛОГИ', 'Внесённые суммы, которые должны вернуться после выполнения условий. Они не входят в невозвратную себестоимость.'), money(metric.refundable_deposits, concert.currency))}${detailValue(help('РАСХОДЫ НА РЕКЛАМУ', 'Фактически внесённые расходы по кампаниям.'), money(metric.marketing_spend, concert.currency))}${detailValue(help('ПЛАНОВЫЕ НЕВОЗВРАТНЫЕ РАСХОДЫ', 'Уже оплаченные расходы, обязательные будущие и явно включённые необязательные расходы. Возвратные залоги не включены.'), money(metric.projected_nonref_cost, concert.currency))}${detailValue(help('ОПЕРАЦИОННЫЙ ОСТАТОК', 'Расчёт: выручка минус уже оплаченные расходы, обязательные будущие, выбранные необязательные расходы и фактические расходы кампаний.'), money(projectedResult, concert.currency))}</div><div class="truth-note">${concert.break_even_mode === 'CALCULATED' ? 'Точка безубыточности рассчитана из внесённых невозвратных расходов и фактических расходов кампаний. Валюты автоматически не конвертируются.' : detail.server ? 'Показатели рассчитаны в общей базе. Валюты автоматически не конвертируются.' : 'Показатели из базы ещё не загружены; показан доступный локальный итог.'}</div>`;
   if (state.detailTab === 'MILESTONES') content = `<button class="button subtle" type="button" data-add-milestone="${esc(concert.id)}">+ ДОБАВИТЬ КОНТРОЛЬНУЮ ДАТУ</button><div class="truth-note">Сигнал отставания сравнивает подтверждённые продажи с заданной целью. Темп — расчёт по двум последним срезам каждого оператора, а не гарантированный прогноз. Система не принимает решение о проведении, переносе или отмене концерта.</div>${detail.milestones.map(milestone => `<div class="detail-line"><b>${esc(milestoneTypeLabels[milestone.milestone_type] || milestone.milestone_type)} · ${esc(milestone.title)}</b><span>${esc(dateLabel(milestone.target_date))}${milestone.target_tickets == null ? '' : ` · цель ${fmt(milestone.target_tickets)} бил.`} · ${esc(milestoneSignal(milestone, sold))}${milestonePaceSummary(milestone, sold, detail.snapshots) ? ` · ${esc(milestonePaceSummary(milestone, sold, detail.snapshots))}` : ''}${milestone.notes ? ` · ${esc(milestone.notes)}` : ''} · <button class="text-button" type="button" data-edit-milestone="${esc(milestone.id)}">ИЗМЕНИТЬ</button> · <button class="text-button danger" type="button" data-delete-milestone="${esc(milestone.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Контрольные даты ещё не заданы.</div>'}`;
   if (state.detailTab === 'CHECKLIST') { const sourceReady = detail.documents.length > 0, snapshotsReady = detail.snapshots.length > 0, sourcedSnapshots = detail.snapshots.filter(snapshot => snapshot.source_document_id).length; content = `<div class="truth-note">Это техническая готовность данных, а не оценка финансового состояния концерта.</div>${checklistItem(sourceReady, 'Источник для концерта', sourceReady ? `${fmt(detail.documents.length)} файлов привязано` : 'Сначала нужен файл от оператора или Meta', sourceReady ? '' : 'source')}${checklistItem(snapshotsReady, 'Ежедневный срез продаж', snapshotsReady ? `${fmt(detail.snapshots.length)} срезов внесено` : 'После источника внесите первый срез по одному оператору', snapshotsReady || !sourceReady ? '' : 'snapshot')}${checklistItem(!snapshotsReady || sourcedSnapshots === detail.snapshots.length, 'Подтверждения для срезов', !snapshotsReady ? 'Срезов ещё нет' : `${fmt(sourcedSnapshots)} из ${fmt(detail.snapshots.length)} срезов имеют файл-источник`)}`; }
-  if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОБАВИТЬ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}${task.details ? ` · ${esc(task.details)}` : ''} · <button class="text-button danger" type="button" data-delete-detail-task="${esc(task.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Для этого концерта задач ещё нет.</div>'}`;
+  if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОБАВИТЬ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'} · исполнитель: ${esc(opsPerson(task.assignee_ops_user_id))}${task.task_status === 'WAITING_FOR_DECISION' ? ` · решение: ${esc(opsPerson(task.blocked_by_ops_user_id))}` : ''}${task.details ? ` · ${esc(task.details)}` : ''} · <button class="text-button danger" type="button" data-delete-detail-task="${esc(task.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Для этого концерта задач ещё нет.</div>'}`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)} · ${esc(label('attribution', order.attribution_type))} · <button class="text-button danger" type="button" data-delete-detail-order="${esc(order.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Записей ещё нет.</div>'; }
   if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОБАВИТЬ ЕЖЕДНЕВНЫЙ СРЕЗ</button><div class="truth-note">Изменение считается только между двумя последними срезами одного оператора и одной валюты. Разных операторов здесь не складываем.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не указан')} · по состоянию на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} бил. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · изменение: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} бил.${change.revenueDelta == null ? ' · другая валюта — без изменения выручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · предыдущего среза ещё нет'} · ${esc(change.latest.source_name || 'источник не привязан')} · <button class="text-button danger" type="button" data-delete-snapshot="${esc(change.latest.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Ежедневных срезов ещё нет.</div>'}${snapshotTimelines(detail.snapshots)}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не указан'} · ${snapshot.source_name || 'источник не привязан'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
   if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата джерела не задана')} · ${esc(label('documentStatus', document.import_status))}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ВІДКРИТИ</button> · <button class="text-button danger" type="button" data-delete-detail-document="${esc(document.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">До цього концерту ще не прив’язано PDF або CSV-джерел.</div>';
@@ -464,7 +464,7 @@ function renderConcertDetail() {
     if (button.dataset.detailAction === 'snapshot') openSnapshotForm(concert);
   }));
   const addDetailTask = document.querySelector('[data-add-detail-task]');
-  if (addDetailTask) addDetailTask.addEventListener('click', () => openTaskForm(null, concert));
+  if (addDetailTask) addDetailTask.addEventListener('click', async () => { await loadOpsUsers(); openTaskForm(null, concert); });
   document.querySelectorAll('[data-open-detail-document]').forEach(button => button.addEventListener('click', () => openDocumentRecord(detail.documents.find(document => document.id === button.dataset.openDetailDocument))));
   document.querySelectorAll('[data-delete-detail-task]').forEach(button => button.addEventListener('click', () => { const task = detail.tasks.find(item => item.id === button.dataset.deleteDetailTask); if (task) deleteRecord({ table: 'daria_operational_tasks', id: task.id, label: task.title, refresh: async () => { await Promise.all([loadTasksModule(), selectConcert(concert.id)]); } }); }));
   document.querySelectorAll('[data-delete-detail-order]').forEach(button => button.addEventListener('click', () => { const order = detail.orders.find(item => item.id === button.dataset.deleteDetailOrder); if (order) deleteRecord({ table: 'daria_orders', id: order.id, label: `заказ ${order.external_order_id}`, refresh: async () => { await Promise.all([loadSalesModule(), loadOperations(), loadReportsModule(), selectConcert(concert.id)]); } }); }));
@@ -484,7 +484,7 @@ async function selectConcert(id) {
   const fallback = state.totals.get(id) || { tickets: 0, revenue: 0 };
   if (!state.session) { state.detail = { server: false, metric: { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue }, orders: [], snapshots: [], documents: [], tasks: [], milestones: [], expenses: [], campaigns: [], channels: [], links: [] }; renderConcertDetail(); return; }
   const [metricsResult, ordersResult, snapshotsResult, expensesResult, campaignsResult, linksResult, operatorsResult, documentsResult, tasksResult, channelsResult, reportsResult, milestonesResult] = await Promise.all([
-    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false }), db.from('daria_sales_channels').select('id,name'), db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false }), db.from('daria_control_dates').select('*').eq('concert_id', id).order('target_date')
+    db.rpc('daria_concert_metrics'), db.from('daria_orders').select('*').eq('concert_id', id).order('order_date', { ascending: false }), db.from('daria_daily_sales_snapshots').select('*').eq('concert_id', id).order('snapshot_date', { ascending: false }), db.from('daria_expenses').select('*').eq('concert_id', id).order('due_date'), db.from('daria_campaigns').select('*').eq('concert_id', id), db.from('daria_tracking_links').select('*').eq('concert_id', id), db.from('daria_ticketing_operators').select('id,name'), db.from('daria_source_documents').select('*'), db.from('daria_operational_tasks').select('*').eq('concert_id', id).order('due_date', { ascending: true, nullsFirst: false }), db.from('daria_sales_channels').select('id,name'), db.from('daria_campaign_confirmed_reports').select('*').order('reported_on', { ascending: false }), db.from('daria_control_dates').select('*').eq('concert_id', id).order('target_date'), loadOpsUsers()
   ]);
   const metric = metricsResult.data?.find(item => item.concert_id === id) || { paid_tickets: fallback.tickets, gross_revenue: fallback.revenue };
   const allDocuments = documentsResult.data || [];
@@ -617,16 +617,38 @@ async function saveMilestone(event) {
   await Promise.all([loadOperations(), selectConcert(raw.concert_id)]);
 }
 
-function taskIsOpen(task) { return ['OPEN', 'IN_PROGRESS'].includes(task.task_status); }
+function taskIsOpen(task) { return ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_DECISION'].includes(task.task_status); }
+function opsPerson(id) { return state.opsUsers.find(item => item.id === id)?.name || (id ? 'неизвестный сотрудник' : 'не назначено'); }
+function syncTaskPeopleOptions() {
+  const options = state.opsUsers.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('');
+  setSelectOptions('task-assignee', options, true, 'НЕ НАЗНАЧЕНО');
+  setSelectOptions('task-blocker', options, true, 'НЕ УКАЗАНО');
+  const filter = byId('task-person-filter'), selected = filter.value;
+  filter.innerHTML = `<option value="ALL">ВСЕ</option><option value="UNASSIGNED">НЕ НАЗНАЧЕНО</option>${options}`;
+  filter.value = [...filter.options].some(option => option.value === selected) ? selected : 'ALL';
+}
+function syncTaskBlockerField() {
+  const form = byId('task-form'), waiting = form.elements.task_status.value === 'WAITING_FOR_DECISION';
+  byId('task-blocker-label').hidden = !waiting;
+  form.elements.blocked_by_ops_user_id.required = waiting;
+  if (!waiting) form.elements.blocked_by_ops_user_id.value = '';
+}
+async function loadOpsUsers() {
+  const result = await db.rpc('daria_list_ops_people');
+  if (!result.error) { state.opsUsers = result.data || []; syncTaskPeopleOptions(); }
+  return result.error || null;
+}
 
 function renderTasks() {
   const filter = byId('task-status-filter').value;
-  const tasks = state.tasks.filter(task => filter === 'ALL' || (filter === 'OPEN' ? taskIsOpen(task) : task.task_status === filter));
+  const person = byId('task-person-filter').value;
+  const tasks = state.tasks.filter(task => (filter === 'ALL' || (filter === 'OPEN' ? taskIsOpen(task) : task.task_status === filter)) && (person === 'ALL' || (person === 'UNASSIGNED' ? !task.assignee_ops_user_id : task.assignee_ops_user_id === person)));
   const today = new Date().toISOString().slice(0, 10);
   byId('task-list').innerHTML = tasks.map(task => {
     const concert = state.concerts.find(item => item.id === task.concert_id);
     const overdue = taskIsOpen(task) && task.due_date && task.due_date < today;
-    return `<article class="expense-row"><div><small>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))}${overdue ? ' · ПРОСРОЧЕНО' : ''}</small><h3>${esc(task.title)}</h3><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'не привязано к концерту')} · ${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}</small></div><div class="expense-meta"><span>${esc(task.details || 'без деталей')}</span><span>${task.completed_at ? `выполнено ${esc(new Date(task.completed_at).toLocaleString('ru-RU'))}` : ''}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-task="${esc(task.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-task="${esc(task.id)}">УДАЛИТЬ</button></div></article>`;
+    const responsibility = `исполнитель: ${opsPerson(task.assignee_ops_user_id)}${task.task_status === 'WAITING_FOR_DECISION' ? ` · решение: ${opsPerson(task.blocked_by_ops_user_id)}` : ''}`;
+    return `<article class="expense-row"><div><small>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))}${overdue ? ' · ПРОСРОЧЕНО' : ''}</small><h3>${esc(task.title)}</h3><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'не привязано к концерту')} · ${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}</small><small>${esc(responsibility)}</small></div><div class="expense-meta"><span>${esc(task.details || 'без деталей')}</span><span>${task.completed_at ? `выполнено ${esc(new Date(task.completed_at).toLocaleString('ru-RU'))}` : ''}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-task="${esc(task.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-task="${esc(task.id)}">УДАЛИТЬ</button></div></article>`;
   }).join('') || '<div class="empty">За цим фільтром задач немає.</div>';
   const open = state.tasks.filter(taskIsOpen), critical = open.filter(task => task.priority === 'CRITICAL'), overdue = open.filter(task => task.due_date && task.due_date < today);
   byId('t-open').textContent = fmt(open.length); byId('t-critical').textContent = fmt(critical.length); byId('t-overdue').textContent = fmt(overdue.length); byId('t-done').textContent = fmt(state.tasks.filter(task => task.task_status === 'DONE').length);
@@ -640,9 +662,13 @@ async function loadTasksModule() {
     state.tasks = []; return;
   }
   if (!state.concerts.length) await loadOperations();
-  const { data, error } = await db.from('daria_operational_tasks').select('*').order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+  const [tasksResult, usersError] = await Promise.all([
+    db.from('daria_operational_tasks').select('*').order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
+    loadOpsUsers()
+  ]);
+  const { data, error } = tasksResult;
   if (error) { byId('tasks-note').classList.add('error'); byId('tasks-note').textContent = `Задачи не загружены: ${error.message}`; return; }
-  state.tasks = data || []; renderTasks(); byId('tasks-note').classList.remove('error'); byId('tasks-note').textContent = 'Задачи фиксируют рабочее действие. Статус «выполнена» не подтверждает финансовый результат.';
+  state.tasks = data || []; renderTasks(); byId('tasks-note').classList.toggle('error', Boolean(usersError)); byId('tasks-note').textContent = usersError ? 'Задачи загружены, но список сотрудников недоступен. Примените обновление доступа к справочнику команды.' : 'Задачи фиксируют исполнителя и того, чьего решения ждут. Статус «выполнена» не подтверждает финансовый результат.';
 }
 
 function openTaskForm(task = null, concert = null, draft = {}) {
@@ -650,12 +676,14 @@ function openTaskForm(task = null, concert = null, draft = {}) {
   const form = byId('task-form'); form.reset(); form.hidden = false; byId('task-form-note').textContent = '';
   byId('task-form-mode').textContent = task ? 'РЕДАГУВАННЯ ЗАДАЧІ' : 'НОВА ЗАДАЧА'; byId('task-form-title').textContent = task ? task.title : 'Додати задачу'; form.elements.id.value = task?.id || '';
   const options = state.concerts.map(item => `<option value="${esc(item.id)}">${esc(item.event_name)} · ${esc(item.city)}</option>`).join(''); setSelectOptions('task-concert', options, true, 'НЕ ПРИВ’ЯЗАНО');
-  const fields = ['concert_id', 'title', 'details', 'task_status', 'priority', 'due_date'];
+  syncTaskPeopleOptions();
+  const fields = ['concert_id', 'title', 'details', 'task_status', 'priority', 'due_date', 'assignee_ops_user_id', 'blocked_by_ops_user_id'];
   if (task) fields.forEach(field => { form.elements[field].value = task[field] ?? ''; });
   else {
     if (concert) form.elements.concert_id.value = concert.id;
     Object.entries(draft).forEach(([field, value]) => { if (form.elements[field]) form.elements[field].value = value; });
   }
+  syncTaskBlockerField();
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -663,7 +691,8 @@ async function saveTask(event) {
   event.preventDefault();
   if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти задачу.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), existing = state.tasks.find(task => task.id === raw.id);
-  const payload = { concert_id: raw.concert_id || null, title: raw.title.trim(), details: raw.details.trim(), task_status: raw.task_status, priority: raw.priority, due_date: raw.due_date || null, completed_at: raw.task_status === 'DONE' ? existing?.completed_at || new Date().toISOString() : null, updated_at: new Date().toISOString() };
+  if (raw.task_status === 'WAITING_FOR_DECISION' && !raw.blocked_by_ops_user_id) { byId('task-form-note').textContent = 'Укажите, чьего решения ждёт задача.'; return; }
+  const payload = { concert_id: raw.concert_id || null, title: raw.title.trim(), details: raw.details.trim(), task_status: raw.task_status, priority: raw.priority, due_date: raw.due_date || null, assignee_ops_user_id: raw.assignee_ops_user_id || null, blocked_by_ops_user_id: raw.task_status === 'WAITING_FOR_DECISION' ? raw.blocked_by_ops_user_id : null, completed_at: raw.task_status === 'DONE' ? existing?.completed_at || new Date().toISOString() : null, updated_at: new Date().toISOString() };
   if (!raw.id) payload.created_by = state.session.user.id;
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('task-form-note').textContent = 'Збереження…';
   const result = raw.id ? await db.from('daria_operational_tasks').update(payload).eq('id', raw.id) : await db.from('daria_operational_tasks').insert(payload);
@@ -1948,13 +1977,15 @@ function bindEvents() {
   byId('concert-form').addEventListener('submit', saveConcert);
   byId('cancel-snapshot').addEventListener('click', () => { byId('snapshot-form').hidden = true; });
   byId('snapshot-form').addEventListener('submit', saveSnapshot);
-  byId('add-task').addEventListener('click', async () => { await loadOperations(); openTaskForm(); });
+  byId('add-task').addEventListener('click', async () => { await Promise.all([loadOperations(), loadOpsUsers()]); openTaskForm(); });
   byId('cancel-task').addEventListener('click', () => { byId('task-form').hidden = true; });
   byId('task-form').addEventListener('submit', saveTask);
   byId('cancel-milestone').addEventListener('click', () => { byId('milestone-form').hidden = true; });
   byId('milestone-form').addEventListener('submit', saveMilestone);
   byId('milestone-form').elements.milestone_type.addEventListener('change', syncMilestoneTicketField);
   byId('task-status-filter').addEventListener('change', renderTasks);
+  byId('task-person-filter').addEventListener('change', renderTasks);
+  byId('task-form').elements.task_status.addEventListener('change', syncTaskBlockerField);
   byId('task-list').addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-task]');
     if (remove) { const task = state.tasks.find(item => item.id === remove.dataset.deleteTask); if (task) deleteRecord({ table: 'daria_operational_tasks', id: task.id, label: task.title, refresh: loadTasksModule }); return; }

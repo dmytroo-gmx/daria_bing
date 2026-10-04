@@ -251,6 +251,23 @@ test('operational tasks are concert-linked, role-protected and audited', async (
   assert.match(migration, /array\['ADMIN', 'MANAGER'\]/);
 });
 
+test('web tasks share assignees and decision blockers with the Telegram panel', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0022_web_task_assignments.sql', import.meta.url), 'utf8');
+  assert.match(html, /name="assignee_ops_user_id"/);
+  assert.match(html, /name="blocked_by_ops_user_id"/);
+  assert.match(html, /WAITING_FOR_DECISION/);
+  assert.match(html, /id="task-person-filter"/);
+  assert.match(js, /function loadOpsUsers/);
+  assert.match(js, /rpc\('daria_list_ops_people'\)/);
+  assert.match(js, /assignee_ops_user_id: raw\.assignee_ops_user_id \|\| null/);
+  assert.match(js, /blocked_by_ops_user_id: raw\.task_status === 'WAITING_FOR_DECISION'/);
+  assert.match(migration, /daria_list_ops_people/);
+  assert.match(migration, /array\['ADMIN', 'MANAGER', 'VIEWER'\]/);
+  assert.match(migration, /security definer/);
+  assert.match(migration, /revoke all .* from public/);
+  assert.doesNotMatch(migration, /telegram_user_id/);
+});
+
 test('operators preserve contract capabilities and unknown fields', () => {
   assert.match(html, /id="operator-form"/);
   for (const field of ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'customer_data_access', 'payout_timing', 'legacy_recommendation']) assert.match(html, new RegExp(`name="${field}"`));
