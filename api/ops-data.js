@@ -1,5 +1,6 @@
 const { bearer, verifySession } = require('../server/ops-session');
 const store = require('../server/ops-store');
+const { sendTelegram } = require('../server/telegram-message');
 
 async function authenticate(request) {
   const session = verifySession(bearer(request), process.env.LEGACY_OPS_SESSION_SECRET);
@@ -42,6 +43,12 @@ module.exports = async function handler(request, response) {
       return response.status(200).json({ user, users, tasks, concerts, documents });
     }
     if (request.method === 'POST') {
+      if (request.body?.action === 'test_reminder') {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        if (!botToken) return response.status(503).json({ error: 'telegram_not_configured' });
+        await sendTelegram(botToken, user.telegram_user_id, 'Legacy Imperial · тестовое напоминание\n\nСвязь с пультом «Всё под рукой» работает. Ежедневные уведомления будут приходить сюда.');
+        return response.status(200).json({ sent: true });
+      }
       if (request.body?.entity !== 'task') return response.status(400).json({ error: 'unknown_entity' });
       const row = request.body.row || {};
       let existing = null;

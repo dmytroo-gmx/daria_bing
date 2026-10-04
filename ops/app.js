@@ -55,6 +55,7 @@ function openTask(task = null) {
 async function saveTask(event) { event.preventDefault(); const raw = Object.fromEntries(new FormData(event.currentTarget)); try { await api('/api/ops-data', { method:'POST', body:JSON.stringify({ entity:'task', row:raw }) }); $('task-dialog').close(); await loadData(); toast('Задача сохранена'); } catch(error) { $('task-error').textContent = `Не удалось сохранить: ${error.message}`; } }
 async function deleteTask() { const id = $('task-form').elements.id.value; const task = state.tasks.find(item => item.id === id); if (!task || !confirm(`Удалить задачу «${task.title}»?`)) return; try { await api('/api/ops-data', { method:'DELETE', body:JSON.stringify({ entity:'task', id }) }); $('task-dialog').close(); await loadData(); toast('Задача удалена'); } catch(error) { $('task-error').textContent = `Не удалось удалить: ${error.message}`; } }
 async function loadData() { const data = await api('/api/ops-data'); Object.assign(state, data); render(); }
+async function sendTestReminder() { const note = $('test-reminder-note'); note.textContent = 'Отправляю…'; try { await api('/api/ops-data', { method:'POST', body:JSON.stringify({ action:'test_reminder' }) }); note.textContent = 'Сообщение отправлено. Проверь этот чат с ботом.'; toast('Тестовое напоминание отправлено'); } catch(error) { note.textContent = `Не удалось отправить: ${error.message}`; } }
 
 async function initialize() {
   $('today-date').textContent = new Intl.DateTimeFormat('ru-RU', { weekday:'long', day:'numeric', month:'long', timeZone:'Europe/Warsaw' }).format(new Date());
@@ -77,6 +78,7 @@ $('task-list').onclick = event => { const card = event.target.closest('[data-tas
 $('task-form').onsubmit = saveTask;
 $('task-form').elements.task_status.onchange = event => { $('decision-owner').hidden = event.target.value !== 'WAITING_FOR_DECISION'; };
 $('delete-task').onclick = deleteTask;
+$('test-reminder').onclick = sendTestReminder;
 document.querySelector('[data-close]').onclick = () => $('task-dialog').close();
 initialize();
 
