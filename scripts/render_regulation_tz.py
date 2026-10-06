@@ -59,8 +59,8 @@ def render(source, target):
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d7cec0")),
                 ("LEFTPADDING", (0, 0), (-1, -1), 6),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ]))
             story.extend([table, Spacer(1, 4 * mm)])
             continue

@@ -90,6 +90,13 @@ test('sales measurement cannot be confirmed without actual ticket evidence', () 
   assert.match(regulation.validateStep({ step_code: 'CHANNEL_MEASUREMENT', status: 'VERIFIED', reviewer_name: 'Дмитро', notes: 'Проверено' }, evaluation), /подтверждённые продажи/);
 });
 
+test('the prelaunch counter is advisory and reopens a stale verification', () => {
+  const evaluation = regulation.evaluate(concert, { expenses: [expense(35000)], channelPlans: [plan] });
+  const rows = regulation.prelaunchCodes.map(step_code => ({ step_code, status: 'VERIFIED' }));
+  assert.equal(regulation.openPrelaunchSteps(evaluation, rows).some(item => item.code === 'BREAK_EVEN'), true);
+  assert.equal(regulation.openPrelaunchSteps(evaluation, rows).some(item => item.code === 'PRODUCT_PROOF'), false);
+});
+
 test('migration keeps new records role-protected and does not update old concerts', async () => {
   const sql = await readFile(new URL('../supabase/migrations/0023_new_era_regulation.sql', import.meta.url), 'utf8');
   for (const table of ['daria_regulation_steps', 'daria_channel_plans', 'daria_funding_sources', 'daria_creative_reviews']) {

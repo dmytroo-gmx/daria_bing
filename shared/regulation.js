@@ -20,6 +20,7 @@
   ];
   const statuses = { OPEN: 'НЕ НАЧАТО', IN_PROGRESS: 'В РАБОТЕ', VERIFIED: 'ПОДТВЕРЖДЕНО', EXCEPTION: 'ИСКЛЮЧЕНИЕ' };
   const decisions = { CONTINUE: 'ПРОДОЛЖАТЬ', POSTPONE: 'ПЕРЕНЕСТИ', CANCEL: 'ОТМЕНИТЬ' };
+  const prelaunchCodes = ['EXPERT_REVIEW', 'BREAK_EVEN', 'CHANNEL_PLAN', 'FUNDING', 'CHECKPOINTS', 'HOOK', 'AUDIENCE_CREATIVE', 'AD_TEST', 'SEASON_PRICE'];
   const count = value => Number(value) || 0;
   const currency = value => String(value || 'PLN').toUpperCase();
   const result = (tone, text, details = {}) => ({ tone, text, ...details });
@@ -144,5 +145,13 @@
     return '';
   }
 
-  return { version, steps, statuses, decisions, plannedEconomy, evaluate, validateStep };
+  function openPrelaunchSteps(evaluation, rows = []) {
+    return steps.filter(item => {
+      if (!prelaunchCodes.includes(item.code)) return false;
+      const saved = rows.find(row => row.step_code === item.code);
+      return !saved || !['VERIFIED', 'EXCEPTION'].includes(saved.status) || saved.status === 'VERIFIED' && evaluation.signals[item.code].tone === 'warn';
+    });
+  }
+
+  return { version, steps, statuses, decisions, prelaunchCodes, plannedEconomy, evaluate, validateStep, openPrelaunchSteps };
 });
