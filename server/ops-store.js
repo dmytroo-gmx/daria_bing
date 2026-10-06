@@ -37,6 +37,7 @@ const select = path => request(path);
 const insert = (table, row) => request(table, { method: 'POST', headers: { Prefer: 'return=representation,resolution=merge-duplicates' }, body: JSON.stringify(row) });
 const update = (path, row) => request(path, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) });
 const remove = path => request(path, { method: 'DELETE' });
+const rpc = (name, query = '') => request(`rpc/${name}${query ? `?${query}` : ''}`, { method: 'POST', body: '{}' });
 
-module.exports = { select, insert, update, remove };
+module.exports = { select, insert, update, remove, rpc };
 

@@ -128,6 +128,7 @@ function showView(view) {
   if (view === 'operators') loadOperatorsModule();
   if (view === 'reports') loadReportsModule();
   if (view === 'finance') loadFinance();
+  if (view === 'regulation') window.loadRegulationWorkspace?.();
 }
 
 function toggleLogin(force) {
@@ -171,7 +172,10 @@ function requireEditor() {
 
 async function blockingReferences(references) {
   const checks = await Promise.all(references.map(reference => db.from(reference.table).select('id', { count: 'exact', head: true }).eq(reference.column, reference.id)));
-  return checks.map((result, index) => ({ ...references[index], count: result.count || 0, error: result.error })).filter(item => item.error || item.count > 0);
+  return checks.map((result, index) => ({ ...references[index], count: result.count || 0, error: result.error })).filter(item => {
+    if (item.error && ['daria_regulation_steps', 'daria_channel_plans', 'daria_funding_sources', 'daria_creative_reviews'].includes(item.table) && ['PGRST205', '42P01'].includes(item.error.code)) return false;
+    return item.error || item.count > 0;
+  });
 }
 
 async function deleteRecord({ table, id, label: recordLabel, references = [], storagePath = '', refresh }) {
@@ -197,7 +201,9 @@ const deleteConcert = concert => deleteRecord({ table: 'daria_concerts', id: con
   { table: 'daria_orders', column: 'concert_id', id: concert.id, label: 'заказы' }, { table: 'daria_expenses', column: 'concert_id', id: concert.id, label: 'расходы' },
   { table: 'daria_campaigns', column: 'concert_id', id: concert.id, label: 'кампании' }, { table: 'daria_tracking_links', column: 'concert_id', id: concert.id, label: 'ссылки' },
   { table: 'daria_daily_sales_snapshots', column: 'concert_id', id: concert.id, label: 'срезы продаж' }, { table: 'daria_source_documents', column: 'concert_id', id: concert.id, label: 'документы' },
-  { table: 'daria_operational_tasks', column: 'concert_id', id: concert.id, label: 'задачи' }, { table: 'daria_unattributed_operator_reports', column: 'concert_id', id: concert.id, label: 'итоги без источника' }
+  { table: 'daria_operational_tasks', column: 'concert_id', id: concert.id, label: 'задачи' }, { table: 'daria_unattributed_operator_reports', column: 'concert_id', id: concert.id, label: 'итоги без источника' },
+  { table: 'daria_regulation_steps', column: 'concert_id', id: concert.id, label: 'проверки регламента' }, { table: 'daria_channel_plans', column: 'concert_id', id: concert.id, label: 'планы каналов' },
+  { table: 'daria_funding_sources', column: 'concert_id', id: concert.id, label: 'источники покрытия' }, { table: 'daria_creative_reviews', column: 'concert_id', id: concert.id, label: 'проверки креативов' }
 ], refresh: async () => { state.selectedConcertId = null; state.detail = null; await loadOperations(); } });
 
 const deleteOperator = operator => deleteRecord({ table: 'daria_ticketing_operators', id: operator.id, label: operator.name, references: [
@@ -206,17 +212,19 @@ const deleteOperator = operator => deleteRecord({ table: 'daria_ticketing_operat
 ], refresh: loadOperatorsModule });
 
 const deleteChannel = channel => deleteRecord({ table: 'daria_sales_channels', id: channel.id, label: channel.name, references: [
-  { table: 'daria_campaigns', column: 'channel_id', id: channel.id, label: 'кампании' }, { table: 'daria_tracking_links', column: 'channel_id', id: channel.id, label: 'ссылки' }
+  { table: 'daria_campaigns', column: 'channel_id', id: channel.id, label: 'кампании' }, { table: 'daria_tracking_links', column: 'channel_id', id: channel.id, label: 'ссылки' }, { table: 'daria_channel_plans', column: 'channel_id', id: channel.id, label: 'планы продаж' }
 ], refresh: loadChannelsModule });
 
 const deleteCampaign = campaign => deleteRecord({ table: 'daria_campaigns', id: campaign.id, label: campaign.campaign_name, references: [
   { table: 'daria_orders', column: 'campaign_id', id: campaign.id, label: 'заказы' }, { table: 'daria_tracking_links', column: 'campaign_id', id: campaign.id, label: 'ссылки' },
-  { table: 'daria_campaign_confirmed_reports', column: 'campaign_id', id: campaign.id, label: 'итоги оператора' }
+  { table: 'daria_campaign_confirmed_reports', column: 'campaign_id', id: campaign.id, label: 'итоги оператора' }, { table: 'daria_creative_reviews', column: 'campaign_id', id: campaign.id, label: 'креативы' }
 ], refresh: async () => { await Promise.all([loadChannelsModule(), loadOperations(), loadReportsModule()]); } });
 
 const deleteDocument = (document, refresh = loadDocumentsModule) => deleteRecord({ table: 'daria_source_documents', id: document.id, label: document.source_name, storagePath: document.storage_path, references: [
   { table: 'daria_daily_sales_snapshots', column: 'source_document_id', id: document.id, label: 'срезы продаж' }, { table: 'daria_campaign_confirmed_reports', column: 'source_document_id', id: document.id, label: 'итоги оператора' },
-  { table: 'daria_unattributed_operator_reports', column: 'source_document_id', id: document.id, label: 'итоги без источника' }
+  { table: 'daria_unattributed_operator_reports', column: 'source_document_id', id: document.id, label: 'итоги без источника' },
+  { table: 'daria_regulation_steps', column: 'source_document_id', id: document.id, label: 'проверки регламента' }, { table: 'daria_funding_sources', column: 'source_document_id', id: document.id, label: 'источники покрытия' },
+  { table: 'daria_creative_reviews', column: 'source_document_id', id: document.id, label: 'проверки креативов' }
 ], refresh });
 
 function riskClass(risk) { return `risk-${String(risk || 'GRAY').toLowerCase()}`; }
@@ -452,6 +460,8 @@ function renderConcertDetail() {
   if (state.detailTab === 'NOTES') content = `<div class="detail-notes">${esc(concert.notes || 'Заметок нет.')}</div>`;
   if (state.detailTab === 'HISTORY') content = detail.auditError ? '<div class="empty">Журнал изменений недоступен для этой роли. Примените миграцию 0004_manager_audit_read.sql.</div>' : detail.audit.map(entry => `<div class="detail-line"><b>${esc(entry.entity_type)} · ${esc(entry.action)}</b><span>${entry.created_at ? new Date(entry.created_at).toLocaleString('ru-RU') : 'время не зафиксировано'} · ${help(auditActorLabel(entry), entry.user_id ? `Полный идентификатор автора: ${entry.user_id}` : 'Идентификатор автора отсутствует в этой старой записи.')}</span></div>`).join('') || '<div class="empty">Изменений этого концерта ещё не зафиксировано.</div>';
   byId('concert-detail').innerHTML = `<p class="eyebrow">КАРТКА КОНЦЕРТУ · ${detail.server ? 'СПІЛЬНА БАЗА' : 'ОБМЕЖЕНИЙ ПЕРЕГЛЯД'}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'майданчик не задано')}</small><div class="detail-tabs">${tabs}</div><div class="detail-content">${content}</div><label class="quick-status">ШВИДКА ЗМІНА СТАТУСУ<select id="quick-status">${statuses.map(status => `<option value="${status}" ${status === concert.status ? 'selected' : ''}>${esc(label('status', status))}</option>`).join('')}</select></label><div class="detail-actions"><button class="button" type="button" id="edit-selected">РЕДАГУВАТИ</button></div>`;
+  byId('concert-detail').querySelector('.detail-actions').insertAdjacentHTML('beforeend', '<button class="button subtle" type="button" id="open-regulation">РЕГЛАМЕНТ ЗАПУСКА</button>');
+  byId('open-regulation').addEventListener('click', () => { window.regulationSelectConcert?.(concert.id); showView('regulation'); });
   document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
   const addSnapshot = document.querySelector('[data-add-snapshot]');
   if (addSnapshot) addSnapshot.addEventListener('click', () => openSnapshotForm(concert));
@@ -2168,6 +2178,7 @@ async function init() {
     if (document.querySelector('[data-panel="operators"]').classList.contains('active')) loadOperatorsModule();
     if (document.querySelector('[data-panel="reports"]').classList.contains('active')) loadReportsModule();
     if (document.querySelector('[data-panel="finance"]').classList.contains('active')) loadFinance();
+    if (document.querySelector('[data-panel="regulation"]').classList.contains('active')) window.loadRegulationWorkspace?.();
   });
   db.channel('booking-sales-live').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'booking_sales', filter: 'id=eq.1' }, payload => {
     bookingConcerts.forEach(concert => bookingOperators.forEach(([operator]) => { byId(`${concert.id}-${operator}`).value = payload.new[`${concert.id}_${operator}`] ?? ''; }));
@@ -2178,6 +2189,7 @@ async function init() {
     if (document.querySelector('[data-panel="booking"]').classList.contains('active')) loadBookingComparison();
   }).subscribe();
   await Promise.all([loadOperations(), loadBooking()]);
+  if (document.querySelector('[data-panel="regulation"]').classList.contains('active')) window.loadRegulationWorkspace?.();
 }
 
 init().catch(error => { console.error(error); setStatus(`Помилка запуску: ${error.message}`, true); });

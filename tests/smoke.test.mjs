@@ -479,7 +479,7 @@ test('Antonio panel uses the canonical source document name', async () => {
     readFile(new URL('../api/ops-data.js', import.meta.url), 'utf8'),
     readFile(new URL('../ops/app.js', import.meta.url), 'utf8')
   ]);
-  assert.match(opsApi, /daria_source_documents\?select=id,source_name/);
+  assert.match(opsApi, /daria_source_documents\?select=id,concert_id,source_name/);
   assert.doesNotMatch(opsApi, /daria_source_documents\?select=id,title/);
   assert.match(opsJs, /item\.source_name/);
 });
@@ -490,15 +490,17 @@ test('Antonio panel hides its startup screen after successful loading', async ()
 });
 
 test('Antonio panel follows Legacy Brain branding and business titles', async () => {
-  const [opsCss, opsJs, migration] = await Promise.all([
+  const [opsCss, opsJs, opsApi, migration] = await Promise.all([
     readFile(new URL('../ops/styles.css', import.meta.url), 'utf8'),
     readFile(new URL('../ops/app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../api/ops-data.js', import.meta.url), 'utf8'),
     readFile(new URL('../supabase/migrations/0018_ops_business_roles.sql', import.meta.url), 'utf8')
   ]);
   for (const color of ['#090909', '#11110f', '#c8a15d', '#f0d39a', '#f4f0e8']) assert.match(opsCss, new RegExp(color));
-  assert.match(opsJs, /Основатель, продюсер/);
-  assert.match(opsJs, /Руководитель аппарата и цифровых проектов/);
-  assert.match(opsJs, /Букинг-менеджер/);
+  assert.match(opsJs, /business_title/);
+  assert.match(opsApi, /Основатель, продюсер/);
+  assert.match(opsApi, /Руководитель аппарата и цифровых проектов/);
+  assert.match(opsApi, /Букинг-менеджер/);
   assert.match(migration, /7803517817/);
   assert.match(migration, /707507251/);
   assert.match(migration, /Daria Bing/);
