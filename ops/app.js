@@ -34,14 +34,15 @@ function renderToday() {
   const mine = open.filter(task => task.assignee_ops_user_id === state.user.id || task.blocked_by_ops_user_id === state.user.id);
   const today = new Date().toISOString().slice(0,10), inThirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10), inFourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0,10);
   const activeConcerts = state.concerts.filter(item => !['CANCELLED','COMPLETED'].includes(item.status));
-  const upcoming = activeConcerts.filter(item => item.event_date && item.event_date >= today).slice(0,5);
+  const upcomingAll = activeConcerts.filter(item => item.event_date && item.event_date >= today);
+  const upcoming = upcomingAll.slice(0,5);
   const riskConcerts = activeConcerts.filter(item => ['RED','YELLOW'].includes(item.risk_status));
   const overdueTasks = open.filter(task => task.due_date && task.due_date < today);
-  const duePayments = state.expenses.filter(item => item.expense_type === 'MANDATORY_FUTURE' && item.payment_status !== 'PAID' && item.due_date && item.due_date <= inThirtyDays);
+  const duePayments = state.expenses.filter(item => item.expense_type === 'MANDATORY_FUTURE' && !['PAID','REFUNDED'].includes(item.payment_status) && item.due_date && item.due_date <= inThirtyDays);
   const controlDates = state.milestones.filter(item => item.status === 'OPEN' && item.target_date && item.target_date >= today && item.target_date <= inFourteenDays);
   const paidTickets = state.metrics.reduce((sum, item) => sum + (Number(item.paid_tickets) || 0), 0);
   $('today-task-count').textContent = mine.length;
-  $('today-event-count').textContent = upcoming.length;
+  $('today-event-count').textContent = upcomingAll.length;
   $('today-paid-tickets').textContent = formatNumber(paidTickets);
   $('today-risk-count').textContent = riskConcerts.length;
   const overview = [];

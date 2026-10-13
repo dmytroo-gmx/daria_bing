@@ -1562,7 +1562,7 @@ function reportSnapshot(concert, orders, expenses, campaigns, confirmedReports =
   const paidTickets = paid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
   const campaignOrders = paid.filter(order => order.campaign_id && order.attribution_type === 'CONFIRMED');
   const paidExpenses = expenses.filter(expense => expense.payment_status === 'PAID');
-  const mandatory = expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID');
+  const mandatory = expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status));
   const spend = campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0);
   const platformOrders = campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_orders) || 0), 0);
   const platformValue = campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_value) || 0), 0);
@@ -1834,8 +1834,8 @@ function renderFinance() {
     return `<article class="expense-row"><div><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'Концерт не найден')}</small><h3>${esc(expense.description)}</h3><small>${esc(expense.category)} · ${esc(label('expenseType', expense.expense_type))}${expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost ? ' · ВКЛЮЧЕНО В ПЛАН' : ''}${expense.supplier ? ` · ${esc(expense.supplier)}` : ''}</small></div><strong class="expense-amount">${money(expense.amount, expense.currency)}</strong><div class="expense-meta"><span class="expense-status ${expense.payment_status === 'PAID' ? 'paid' : ''}">${esc(label('paymentStatus', expense.payment_status))}</span><span>${expense.due_date ? `до ${esc(dateLabel(expense.due_date))}` : 'срок не указан'}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-expense="${esc(expense.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-expense="${esc(expense.id)}">УДАЛИТЬ</button></div></article>`;
   }).join('') || '<div class="empty">По этому фильтру записей нет.</div>';
   byId('f-paid').textContent = currencyTotals(state.expenses.filter(expense => expense.payment_status === 'PAID'));
-  byId('f-mandatory').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID'));
-  byId('f-optional').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.payment_status !== 'PAID'));
+  byId('f-mandatory').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status)));
+  byId('f-optional').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && !['PAID', 'REFUNDED'].includes(expense.payment_status)));
   byId('f-optional-note').textContent = `из них в плане: ${currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost && !['PAID', 'REFUNDED'].includes(expense.payment_status)))}`;
   byId('f-deposits').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'REFUNDABLE_DEPOSIT' && expense.payment_status !== 'REFUNDED'));
   renderCashPlan();

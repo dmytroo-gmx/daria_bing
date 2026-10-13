@@ -501,6 +501,8 @@ test('Antonio panel shows the same operational summary without copying records',
   assert.match(opsJs, /function renderToday\(\)/);
   assert.match(opsJs, /Обязательные платежи до 30 дней/);
   assert.match(opsJs, /Контрольные даты на 14 дней/);
+  assert.match(opsJs, /const upcomingAll =/);
+  assert.match(opsJs, /!\['PAID','REFUNDED'\]\.includes\(item\.payment_status\)/);
 });
 
 test('Antonio panel uses the canonical source document name', async () => {
@@ -543,6 +545,7 @@ test('finance has a conservative 30 and 60 day cash plan', async () => {
   assert.match(js, /function mandatoryDueWithin/);
   assert.match(js, /daria_cash_balances/);
   assert.match(js, /Продажи билетов не считаются деньгами на счёте/);
+  assert.match(js, /!\['PAID', 'REFUNDED'\]\.includes\(expense\.payment_status\)/);
   assert.match(migration, /create table if not exists public\.daria_cash_balances/);
   assert.match(migration, /daria_cash_balances_write/);
 });
