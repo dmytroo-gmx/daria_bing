@@ -46,13 +46,17 @@ module.exports = async function handler(request, response) {
     if (!user) return response.status(401).json({ error: 'invalid_session' });
     if (request.method === 'GET') {
       if (request.query?.scope !== 'regulation') {
-        const [users, tasks, concerts, documents] = await Promise.all([
+        const [users, tasks, concerts, documents, metrics, expenses, milestones, snapshots] = await Promise.all([
           store.select('daria_ops_users?active=eq.true&select=id,name,role,telegram_user_id&order=name.asc'),
           store.select('daria_operational_tasks?select=id,title,details,concert_id,task_status,priority,due_date,assignee_ops_user_id,blocked_by_ops_user_id,created_by_ops_user_id,created_at,updated_at&order=due_date.asc.nullslast,created_at.desc'),
           store.select('daria_concerts?select=id,event_name,project_name,city,event_date,venue,capacity,average_ticket_price,planned_marketing_budget,currency,status,risk_status&order=event_date.asc.nullslast'),
-          store.select('daria_source_documents?select=id,concert_id,source_name,document_type,source_date,notes,created_at&order=created_at.desc')
+          store.select('daria_source_documents?select=id,concert_id,source_name,document_type,source_date,notes,created_at&order=created_at.desc'),
+          store.rpc('daria_concert_metrics'),
+          store.select('daria_expenses?select=concert_id,amount,currency,expense_type,payment_status,due_date'),
+          store.select('daria_control_dates?select=id,concert_id,milestone_type,target_date,title,target_tickets,status&order=target_date.asc'),
+          store.select('daria_daily_sales_snapshots?select=concert_id,snapshot_date,tickets_sold_total&order=snapshot_date.desc')
         ]);
-        return response.status(200).json({ user: publicOpsUser(user), users: users.map(publicOpsUser), tasks, concerts, documents });
+        return response.status(200).json({ user: publicOpsUser(user), users: users.map(publicOpsUser), tasks, concerts, documents, metrics, expenses, milestones, snapshots });
       }
       const concertId = String(request.query?.concert_id || '');
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(concertId)) return response.status(400).json({ error: 'concert_id_required' });

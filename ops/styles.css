@@ -68,7 +68,7 @@ h2 { margin: 30px 0 12px; font: 400 27px Georgia, serif; }
 .brain i { color: var(--gold); font-style: normal; }
 
 .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.summary button { padding: 17px; border: 1px solid var(--line); background: var(--panel); color: var(--cream); text-align: left; }
+.summary button, .summary > div { padding: 17px; border: 1px solid var(--line); background: var(--panel); color: var(--cream); text-align: left; }
 .summary strong { display: block; color: var(--gold-light); font: 32px Georgia, serif; }
 .summary span { color: var(--muted); font-size: 11px; }
 .list { display: grid; gap: 10px; }
@@ -78,6 +78,7 @@ h2 { margin: 30px 0 12px; font: 400 27px Georgia, serif; }
 .card .row { display: flex; justify-content: space-between; gap: 12px; }
 .card .row b { color: var(--gold-light); font-size: 10px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; }
 .card button { border: 0; background: transparent; color: var(--gold-light); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.inline-link { display: inline-block; margin-top: 8px; color: var(--gold-light); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-decoration: none; }
 .empty { padding: 18px; border: 1px dashed var(--line); color: var(--muted); font-size: 12px; line-height: 1.5; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .round { width: 46px; height: 46px; border: 1px solid var(--gold); border-radius: 50%; background: transparent; color: var(--gold-light); font-size: 27px; }

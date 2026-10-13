@@ -10,6 +10,10 @@ module.exports = async function handler(request, response) {
       store.select('daria_operational_tasks?select=id,title,details,concert_id,task_status,priority,due_date,assignee_ops_user_id,blocked_by_ops_user_id,created_by_ops_user_id,created_at,updated_at&order=due_date.asc.nullslast,created_at.desc&limit=1'),
       store.select('daria_concerts?select=id,event_name,city,event_date,venue,status,risk_status&order=event_date.asc.nullslast&limit=1'),
       store.select('daria_source_documents?select=id,source_name,document_type,source_date,notes,created_at&order=created_at.desc&limit=1'),
+      store.rpc('daria_concert_metrics'),
+      store.select('daria_expenses?select=concert_id,amount,currency,expense_type,payment_status,due_date&limit=1'),
+      store.select('daria_control_dates?select=id,concert_id,milestone_type,target_date,title,target_tickets,status&order=target_date.asc&limit=1'),
+      store.select('daria_daily_sales_snapshots?select=concert_id,snapshot_date,tickets_sold_total&order=snapshot_date.desc&limit=1'),
       store.select('daria_ops_reminder_log?select=id&limit=1')
     ]);
     const reminders = process.env.CRON_SECRET && process.env.TELEGRAM_BOT_TOKEN ? 'ready' : 'not_configured';

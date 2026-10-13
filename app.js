@@ -28,7 +28,7 @@ const labels = {
   paymentStatus: { UNPAID: 'НЕ ОПЛАЧЕНО', PAID: 'ОПЛАЧЕНО', PARTIALLY_PAID: 'ОПЛАЧЕНО ЧАСТИЧНО', REFUNDED: 'ВОЗВРАТ' },
   linkStatus: { ACTIVE: 'АКТИВНА', PAUSED: 'НА ПАУЗЕ', ARCHIVED: 'В АРХИВЕ' }
 };
-const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], milestones: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [], opsUsers: [] };
+const state = { session: null, role: null, concerts: [], totals: new Map(), concertFinance: new Map(), selectedConcertId: null, detailTab: 'OVERVIEW', detail: null, expenses: [], cashBalances: [], milestones: [], orders: [], campaignOrders: [], campaignConfirmedReports: [], unattributedOperatorReports: [], operators: [], channels: [], campaigns: [], trackingLinks: [], documents: [], csvImports: [], tasks: [], opsUsers: [], reportRows: [] };
 const byId = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
@@ -1554,7 +1554,7 @@ function ratio(numerator, denominator, suffix = '') {
   return `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(numerator / denominator)}${suffix}`;
 }
 
-function reportCard(concert, orders, expenses, campaigns, confirmedReports = [], unattributedReports = []) {
+function reportSnapshot(concert, orders, expenses, campaigns, confirmedReports = [], unattributedReports = []) {
   const currency = concert.currency || 'PLN';
   const paid = orders.filter(order => order.status === 'PAID');
   const fallbackReports = campaigns.flatMap(campaign => paid.some(order => order.campaign_id === campaign.id) ? [] : confirmedReports.filter(report => report.campaign_id === campaign.id).sort((left, right) => `${right.reported_on}${right.created_at}`.localeCompare(`${left.reported_on}${left.created_at}`)).slice(0, 1));
@@ -1571,7 +1571,16 @@ function reportCard(concert, orders, expenses, campaigns, confirmedReports = [],
   const confirmedTickets = campaignOrders.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
   const paidRevenue = paid.reduce((sum, order) => sum + (Number(order.gross_revenue) || 0), 0) + fallbackReports.filter(report => report.currency === currency).reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0) + fallbackUnattributedReports.filter(report => report.currency === currency).reduce((sum, report) => sum + (Number(report.confirmed_revenue) || 0), 0);
   const unattributedTickets = paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0);
-  return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${money(paidRevenue, currency)}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(unattributedTickets)}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaigns.length}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, confirmedOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА</b>${ratio(spend, confirmedTickets, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ</b>${ratio(confirmedGross, spend, '×')}</div></div></article>`;
+  const breakEven = Number(concert.break_even_tickets) || null;
+  const capacity = Number(concert.capacity) || null;
+  const fillShare = capacity ? paidTickets / capacity : null;
+  const breakEvenProgress = breakEven ? paidTickets / breakEven : null;
+  return { concert, currency, paidTickets, paidRevenue, paidExpenses, mandatory, spend, platformOrders, platformValue, confirmedOrders, confirmedGross, confirmedTickets, unattributedTickets, campaignCount: campaigns.length, breakEven, capacity, fillShare, breakEvenProgress };
+}
+
+function reportCard(snapshot) {
+  const { concert, currency, paidTickets, paidRevenue, paidExpenses, mandatory, spend, platformOrders, confirmedOrders, confirmedGross, confirmedTickets, unattributedTickets, campaignCount, breakEven, fillShare, breakEvenProgress } = snapshot;
+  return `<article class="report-card"><p class="eyebrow">${esc(label('status', concert.status))} · ${esc(label('risk', concert.risk_status))}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="report-grid"><div class="report-item"><span>ОПЛАЧЕННЫЕ БИЛЕТЫ</span><strong>${fmt(paidTickets)}</strong></div><div class="report-item"><span>ЗАПОЛНЕНИЕ ЗАЛА</span><strong>${fillShare == null ? '—' : `${fmt(fillShare * 100)}%`}</strong></div><div class="report-item"><span>ДО БЕЗУБЫТОЧНОСТИ</span><strong>${breakEven == null ? '—' : fmt(Math.max(0, breakEven - paidTickets))}</strong></div><div class="report-item"><span>ПРОЙДЕНО ДО БЕЗУБЫТОЧНОСТИ</span><strong>${breakEvenProgress == null ? '—' : `${fmt(breakEvenProgress * 100)}%`}</strong></div><div class="report-item"><span>ВЫРУЧКА ПО ОПЛАЧЕННЫМ</span><strong>${money(paidRevenue, currency)}</strong></div><div class="report-item"><span>ФАКТИЧЕСКИЕ РАСХОДЫ РЕКЛАМЫ</span><strong>${money(spend, currency)}</strong></div><div class="report-item"><span>ОПЛАЧЕННЫЕ РАСХОДЫ</span><strong>${currencyTotals(paidExpenses)}</strong></div><div class="report-item"><span>ОБЯЗАТЕЛЬНО ОПЛАТИТЬ</span><strong>${currencyTotals(mandatory)}</strong></div><div class="report-item"><span>ОПЛАЧЕНО БЕЗ ИСТОЧНИКА</span><strong>${fmt(unattributedTickets)}</strong></div><div class="report-item"><span>ЗАКАЗЫ ПО ДАННЫМ ПЛАТФОРМЫ</span><strong>${fmt(platformOrders)}</strong></div><div class="report-item"><span>КАМПАНИИ</span><strong>${campaignCount}</strong></div></div><div class="report-meta"><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО ЗАКАЗА</b>${ratio(spend, confirmedOrders, ` ${currency}`)}</div><div><b>СТОИМОСТЬ ПОДТВЕРЖДЁННОГО БИЛЕТА</b>${ratio(spend, confirmedTickets, ` ${currency}`)}</div><div><b>ОКУПАЕМОСТЬ ПОДТВЕРЖДЁННЫХ ПРОДАЖ</b>${ratio(confirmedGross, spend, '×')}</div></div></article>`;
 }
 
 function latestFallbackOperatorReports(campaigns, paidOrders, confirmedReports) {
@@ -1594,6 +1603,48 @@ function latestFallbackUnattributedReports(reports, paidOrders) {
 function reportTable(headers, rows, emptyMessage) {
   if (!rows.length) return `<div class="empty">${esc(emptyMessage)}</div>`;
   return `<table><thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function reportSignals(snapshot) {
+  const { concert, paidTickets, unattributedTickets, breakEven, capacity, mandatory } = snapshot;
+  const signals = [];
+  const missing = [!concert.event_date && 'дата', !concert.venue && 'площадка', !capacity && 'вместимость', !Number(concert.average_ticket_price) && 'средняя цена', !breakEven && 'точка безубыточности'].filter(Boolean);
+  if (['RED', 'YELLOW'].includes(concert.risk_status)) signals.push({ level: concert.risk_status === 'RED' ? 'high' : 'normal', text: `Риск отмечен как «${label('risk', concert.risk_status)}». Проверьте причину и следующее действие.` });
+  if (missing.length) signals.push({ level: 'normal', text: `Не заполнено: ${missing.join(', ')}.` });
+  if (capacity && breakEven && breakEven > capacity) signals.push({ level: 'high', text: `Точка безубыточности ${fmt(breakEven)} билетов выше вместимости ${fmt(capacity)}.` });
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const eventDate = concert.event_date ? new Date(`${concert.event_date}T12:00:00`) : null;
+  const daysToEvent = eventDate ? Math.ceil((eventDate - today) / 86400000) : null;
+  if (daysToEvent != null && daysToEvent >= 0 && daysToEvent <= 30 && breakEven && paidTickets < breakEven) signals.push({ level: 'high', text: `До концерта ${daysToEvent} дн.; до точки безубыточности не хватает ${fmt(breakEven - paidTickets)} билетов. Решение принимает команда.` });
+  if (unattributedTickets > 0) signals.push({ level: 'normal', text: `${fmt(unattributedTickets)} оплаченных билетов пока без установленного источника.` });
+  const overdue = mandatory.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10));
+  if (overdue.length) signals.push({ level: 'high', text: `Просрочено обязательных платежей: ${overdue.length} · ${currencyTotals(overdue)}.` });
+  return signals;
+}
+
+function renderReportAttention(rows) {
+  const signals = rows.flatMap(snapshot => reportSignals(snapshot).map(signal => ({ ...signal, concert: snapshot.concert })));
+  byId('report-attention-list').innerHTML = signals.length ? signals.map(item => `<article class="report-signal ${item.level === 'high' ? 'high' : ''}"><h3>${esc(item.concert.event_name)}</h3><p>${esc(item.text)}</p><button class="text-button" type="button" data-report-concert="${esc(item.concert.id)}">ОТКРЫТЬ КОНЦЕРТ</button></article>`).join('') : '<div class="empty">По выбранным фильтрам обязательных сигналов не найдено. Это не отменяет ручную проверку исходных данных.</div>';
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function exportReportCsv() {
+  if (!state.reportRows.length) { setStatus('В выбранном отчёте нет строк для выгрузки.', true); return; }
+  const headers = ['Концерт', 'Город', 'Дата', 'Статус', 'Риск', 'Валюта', 'Вместимость', 'Оплачено билетов', 'Заполнение, %', 'Точка безубыточности', 'Осталось до безубыточности', 'Выручка', 'Расходы рекламы', 'Обязательные платежи', 'Билеты без источника', 'Сигналы'];
+  const rows = state.reportRows.map(row => [row.concert.event_name, row.concert.city, row.concert.event_date || '', label('status', row.concert.status), label('risk', row.concert.risk_status), row.currency, row.capacity || '', row.paidTickets, row.fillShare == null ? '' : (row.fillShare * 100).toFixed(1), row.breakEven || '', row.breakEven == null ? '' : Math.max(0, row.breakEven - row.paidTickets), row.paidRevenue, row.spend, currencyTotals(row.mandatory), row.unattributedTickets, reportSignals(row).map(item => item.text).join(' | ')]);
+  const csv = '\ufeff' + [headers, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a'); link.href = url; link.download = `legacy-brain-report-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  setStatus('Таблица отчёта сохранена');
+}
+
+function resetReportFilters() {
+  ['report-concert-filter', 'report-city-filter', 'report-status-filter', 'report-channel-filter', 'report-attention-filter'].forEach(id => { byId(id).value = 'ALL'; });
+  byId('report-date-from').value = ''; byId('report-date-to').value = ''; loadReportsModule();
 }
 
 function renderChannelReport(metrics, concerts, concertIds, channelId) {
@@ -1662,15 +1713,17 @@ function populateReportFilters(concerts, metrics) {
 
 async function loadReportsModule() {
   if (!state.session) {
+    state.reportRows = [];
     ['r-concerts', 'r-paid-tickets', 'r-spend', 'r-unattributed'].forEach(id => { byId(id).textContent = '—'; });
     byId('report-list').innerHTML = '<div class="empty">Войдите в рабочий аккаунт, чтобы увидеть отчёты.</div>';
+    byId('report-attention-list').innerHTML = '<div class="empty">Войдите, чтобы собрать сигналы.</div>';
     byId('reports-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не трактуется как ноль.';
     return;
   }
   const [concertsResult, ordersResult, expensesResult, campaignsResult, metricsResult, operatorsResult, reportsResult, unattributedReportsResult] = await Promise.all([
     db.from('daria_concerts').select('*').order('event_date', { ascending: true, nullsFirst: false }),
     db.from('daria_orders').select('concert_id,campaign_id,operator_id,ticket_count,gross_revenue,currency,status'),
-    db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status'),
+    db.from('daria_expenses').select('concert_id,amount,currency,expense_type,payment_status,due_date'),
     db.from('daria_campaigns').select('id,concert_id,channel_id,actual_spend,platform_reported_orders,platform_reported_value'),
     db.rpc('daria_channel_metrics'),
     db.from('daria_ticketing_operators').select('id,name').order('name'),
@@ -1678,15 +1731,23 @@ async function loadReportsModule() {
     db.from('daria_unattributed_operator_reports').select('*').order('reported_on', { ascending: false })
   ]);
   const errors = [concertsResult.error && `concerts: ${concertsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`, expensesResult.error && `expenses: ${expensesResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, metricsResult.error && `channel metrics: ${metricsResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`].filter(Boolean);
-  if (errors.length) { byId('report-list').innerHTML = `<div class="empty">Не удалось собрать отчёт: ${esc(errors.join(' · '))}</div>`; byId('reports-note').classList.add('error'); return; }
+  if (errors.length) { state.reportRows = []; byId('report-list').innerHTML = `<div class="empty">Не удалось собрать отчёт: ${esc(errors.join(' · '))}</div>`; byId('report-attention-list').innerHTML = '<div class="empty">Сигналы недоступны, пока отчёт не загрузился.</div>'; byId('reports-note').classList.add('error'); return; }
   const concerts = concertsResult.data || [], orders = ordersResult.data || [], expenses = expensesResult.data || [], campaigns = campaignsResult.data || [], metrics = metricsResult.data || [], operators = operatorsResult.data || [], confirmedReports = reportsResult.error ? [] : reportsResult.data || [], unattributedReports = unattributedReportsResult.error ? [] : unattributedReportsResult.data || [];
   populateReportFilters(concerts, metrics);
-  const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, channelId = byId('report-channel-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
+  const concertId = byId('report-concert-filter').value, city = byId('report-city-filter').value, status = byId('report-status-filter').value, channelId = byId('report-channel-filter').value, attention = byId('report-attention-filter').value, dateFrom = byId('report-date-from').value, dateTo = byId('report-date-to').value;
   const selectedConcert = concerts.find(concert => concert.id === concertId);
   const selectedChannel = metrics.find(metric => metric.channel_id === channelId);
-  const reportScope = [selectedConcert?.event_name || (concertId === 'ALL' ? 'все концерты' : 'выбранный концерт'), city === 'ALL' ? '' : `город: ${city}`, selectedChannel?.channel_name || (channelId === 'ALL' ? '' : 'выбранный канал'), dateFrom ? `с ${dateLabel(dateFrom)}` : '', dateTo ? `по ${dateLabel(dateTo)}` : ''].filter(Boolean).join(' · ');
+  const reportScope = [selectedConcert?.event_name || (concertId === 'ALL' ? 'все концерты' : 'выбранный концерт'), city === 'ALL' ? '' : `город: ${city}`, status === 'ALL' ? '' : `статус: ${label('status', status)}`, selectedChannel?.channel_name || (channelId === 'ALL' ? '' : 'выбранный канал'), attention === 'ATTENTION' ? 'только с сигналами' : '', dateFrom ? `с ${dateLabel(dateFrom)}` : '', dateTo ? `по ${dateLabel(dateTo)}` : ''].filter(Boolean).join(' · ');
   byId('report-print-context').textContent = `Сформировано ${new Date().toLocaleString('ru-RU')} · ${reportScope}`;
-  const visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city) && (!dateFrom || concert.event_date >= dateFrom) && (!dateTo || concert.event_date <= dateTo));
+  let visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city) && (status === 'ALL' || concert.status === status) && (!dateFrom || concert.event_date >= dateFrom) && (!dateTo || concert.event_date <= dateTo));
+  const candidateIds = new Set(visibleConcerts.map(concert => concert.id));
+  const candidateCampaigns = campaigns.filter(campaign => candidateIds.has(campaign.concert_id) && (channelId === 'ALL' || campaign.channel_id === channelId));
+  const candidateCampaignIds = new Set(candidateCampaigns.map(campaign => campaign.id));
+  const candidateOrders = channelId === 'ALL' ? orders : orders.filter(order => candidateCampaignIds.has(order.campaign_id));
+  let reportRows = visibleConcerts.map(concert => reportSnapshot(concert, candidateOrders.filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), candidateCampaigns.filter(campaign => campaign.concert_id === concert.id), confirmedReports, channelId === 'ALL' ? unattributedReports.filter(report => report.concert_id === concert.id) : []));
+  if (attention === 'ATTENTION') reportRows = reportRows.filter(row => reportSignals(row).length);
+  state.reportRows = reportRows;
+  visibleConcerts = reportRows.map(row => row.concert);
   const concertIds = new Set(visibleConcerts.map(concert => concert.id));
   const paid = orders.filter(order => order.status === 'PAID' && concertIds.has(order.concert_id));
   const visibleCampaigns = campaigns.filter(campaign => concertIds.has(campaign.concert_id) && (channelId === 'ALL' || campaign.channel_id === channelId));
@@ -1703,7 +1764,8 @@ async function loadReportsModule() {
   byId('r-spend-note').textContent = channelId === 'ALL' ? 'внесённые расходы кампаний' : 'расходы кампаний выбранного канала';
   byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0)) : '—';
   byId('r-unattributed-note').textContent = channelId === 'ALL' ? 'без привязки к кампании' : 'не относится к выбранному каналу';
-  byId('report-list').innerHTML = visibleConcerts.map(concert => reportCard(concert, (channelId === 'ALL' ? orders : visiblePaid).filter(order => order.concert_id === concert.id), expenses.filter(expense => expense.concert_id === concert.id), visibleCampaigns.filter(campaign => campaign.concert_id === concert.id), confirmedReports, channelId === 'ALL' ? unattributedReports.filter(report => report.concert_id === concert.id) : [])).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
+  renderReportAttention(reportRows);
+  byId('report-list').innerHTML = reportRows.map(reportCard).join('') || '<div class="empty">Концертов, подходящих под выбранный фильтр, нет.</div>';
   renderChannelReport(metrics, concerts, concertIds, channelId);
   renderOperatorReport(visiblePaid, operators, concerts, concertIds, visibleUnattributedReports);
   byId('reports-note').classList.remove('error');
@@ -2146,8 +2208,13 @@ function bindEvents() {
   byId('report-concert-filter').addEventListener('change', loadReportsModule);
   byId('report-city-filter').addEventListener('change', loadReportsModule);
   byId('report-channel-filter').addEventListener('change', loadReportsModule);
+  byId('report-status-filter').addEventListener('change', loadReportsModule);
+  byId('report-attention-filter').addEventListener('change', loadReportsModule);
   byId('report-date-from').addEventListener('change', loadReportsModule);
   byId('report-date-to').addEventListener('change', loadReportsModule);
+  byId('reset-report-filters').addEventListener('click', resetReportFilters);
+  byId('export-report-csv').addEventListener('click', exportReportCsv);
+  byId('report-attention-list').addEventListener('click', event => { const button = event.target.closest('[data-report-concert]'); if (!button) return; showView('concerts'); loadOperations().then(() => selectConcert(button.dataset.reportConcert)); });
   byId('print-report').addEventListener('click', () => window.print());
   byId('expense-list').addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-expense]');

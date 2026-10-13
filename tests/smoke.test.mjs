@@ -321,6 +321,17 @@ test('reports can be saved through the browser PDF workflow', () => {
   assert.match(js, /print-report.*window\.print/);
 });
 
+test('reports expose management signals, clear filters and a source-backed table export', () => {
+  for (const id of ['report-status-filter', 'report-attention-filter', 'report-attention-list', 'reset-report-filters', 'export-report-csv']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(js, /function reportSignals\(snapshot\)/);
+  assert.match(js, /function renderReportAttention\(rows\)/);
+  assert.match(js, /function exportReportCsv\(\)/);
+  assert.match(js, /Точка безубыточности/);
+  assert.match(js, /Blob\(\[csv\]/);
+  assert.match(js, /data-report-concert/);
+  assert.match(css, /\.report-attention/);
+});
+
 test('report channel filter scopes headline metrics and concert cards consistently', () => {
   assert.match(html, /id="r-paid-tickets-note"/);
   assert.match(html, /id="r-unattributed-note"/);
@@ -469,9 +480,27 @@ test('Antonio panel exposes a secret-safe database readiness check', async () =>
   assert.match(health, /daria_operational_tasks\?select=/);
   assert.match(health, /daria_concerts\?select=/);
   assert.match(health, /daria_source_documents\?select=id,source_name/);
+  assert.match(health, /daria_concert_metrics/);
+  assert.match(health, /daria_expenses\?select=/);
+  assert.match(health, /daria_control_dates\?select=/);
   assert.match(health, /database: 'ready'/);
   assert.doesNotMatch(health, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/);
   assert.match(store, /databaseCode/);
+});
+
+test('Antonio panel shows the same operational summary without copying records', async () => {
+  const [opsApi, opsJs, opsHtml] = await Promise.all([
+    readFile(new URL('../api/ops-data.js', import.meta.url), 'utf8'),
+    readFile(new URL('../ops/app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../ops/index.html', import.meta.url), 'utf8')
+  ]);
+  for (const id of ['today-paid-tickets', 'today-risk-count', 'today-overview']) assert.match(opsHtml, new RegExp(`id="${id}"`));
+  assert.match(opsApi, /store\.rpc\('daria_concert_metrics'\)/);
+  assert.match(opsApi, /daria_expenses\?select=/);
+  assert.match(opsApi, /daria_control_dates\?select=/);
+  assert.match(opsJs, /function renderToday\(\)/);
+  assert.match(opsJs, /Обязательные платежи до 30 дней/);
+  assert.match(opsJs, /Контрольные даты на 14 дней/);
 });
 
 test('Antonio panel uses the canonical source document name', async () => {

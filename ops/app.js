@@ -12,6 +12,12 @@ const labels = {
 
 function toast(message) { const node = $('toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2400); }
 function formatDate(value) { return value ? new Intl.DateTimeFormat('ru-RU', { dateStyle:'medium', timeZone:'Europe/Warsaw' }).format(new Date(`${value}T12:00:00Z`)) : 'без даты'; }
+function formatNumber(value) { return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value) || 0); }
+function moneyGroups(rows) {
+  const totals = new Map();
+  rows.forEach(row => totals.set(row.currency || 'PLN', (totals.get(row.currency || 'PLN') || 0) + (Number(row.amount) || 0)));
+  return [...totals].map(([currency, amount]) => `${formatNumber(amount)} ${currency}`).join(' · ') || '0';
+}
 function person(id) { return state.users.find(item => item.id === id)?.name || 'Не назначено'; }
 function jobTitle(user) {
   return user.business_title || 'Команда';
@@ -26,9 +32,24 @@ function taskCard(task, editable = true) {
 function renderToday() {
   const open = state.tasks.filter(task => !['DONE','CANCELLED'].includes(task.task_status));
   const mine = open.filter(task => task.assignee_ops_user_id === state.user.id || task.blocked_by_ops_user_id === state.user.id);
-  const upcoming = state.concerts.filter(item => item.event_date && item.event_date >= new Date().toISOString().slice(0,10) && !['CANCELLED','COMPLETED'].includes(item.status)).slice(0,5);
+  const today = new Date().toISOString().slice(0,10), inThirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10), inFourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0,10);
+  const activeConcerts = state.concerts.filter(item => !['CANCELLED','COMPLETED'].includes(item.status));
+  const upcoming = activeConcerts.filter(item => item.event_date && item.event_date >= today).slice(0,5);
+  const riskConcerts = activeConcerts.filter(item => ['RED','YELLOW'].includes(item.risk_status));
+  const overdueTasks = open.filter(task => task.due_date && task.due_date < today);
+  const duePayments = state.expenses.filter(item => item.expense_type === 'MANDATORY_FUTURE' && item.payment_status !== 'PAID' && item.due_date && item.due_date <= inThirtyDays);
+  const controlDates = state.milestones.filter(item => item.status === 'OPEN' && item.target_date && item.target_date >= today && item.target_date <= inFourteenDays);
+  const paidTickets = state.metrics.reduce((sum, item) => sum + (Number(item.paid_tickets) || 0), 0);
   $('today-task-count').textContent = mine.length;
   $('today-event-count').textContent = upcoming.length;
+  $('today-paid-tickets').textContent = formatNumber(paidTickets);
+  $('today-risk-count').textContent = riskConcerts.length;
+  const overview = [];
+  if (overdueTasks.length) overview.push(`<article class="card"><div class="row"><h3>Просроченные задачи</h3><b>${overdueTasks.length}</b></div><p>Открытые задачи со сроком раньше сегодняшнего дня.</p><button type="button" data-view="tasks">ОТКРЫТЬ ЗАДАЧИ</button></article>`);
+  if (duePayments.length) overview.push(`<article class="card"><div class="row"><h3>Обязательные платежи до 30 дней</h3><b>${escapeHtml(moneyGroups(duePayments))}</b></div><p>Включая просроченные. Полная разбивка находится в Legacy Brain.</p><a class="inline-link" href="../#finance">ОТКРЫТЬ РАСХОДЫ →</a></article>`);
+  if (controlDates.length) overview.push(`<article class="card"><div class="row"><h3>Контрольные даты на 14 дней</h3><b>${controlDates.length}</b></div><p>${escapeHtml(controlDates.slice(0,3).map(item => `${formatDate(item.target_date)} · ${item.title}`).join(' · '))}</p><a class="inline-link" href="../#dashboard">ОТКРЫТЬ ОБЗОР →</a></article>`);
+  if (riskConcerts.length) overview.push(`<article class="card"><div class="row"><h3>Концерты с риском</h3><b>${riskConcerts.length}</b></div><p>${escapeHtml(riskConcerts.slice(0,4).map(item => item.event_name).join(' · '))}</p><button type="button" data-view="events">ОТКРЫТЬ СОБЫТИЯ</button></article>`);
+  $('today-overview').innerHTML = overview.length ? overview.join('') : '<div class="empty">По внесённым данным срочных сигналов нет. Проверь свежесть отчётов операторов вручную.</div>';
   $('today-tasks').innerHTML = mine.length ? mine.slice(0,5).map(task => taskCard(task, false)).join('') : '<div class="empty">Открытых задач для тебя нет.</div>';
   $('today-events').innerHTML = upcoming.length ? upcoming.map(item => `<article class="card"><h3>${escapeHtml(item.event_name)}</h3><p>${escapeHtml(formatDate(item.event_date))} · ${escapeHtml(item.city)}${item.venue ? ` · ${escapeHtml(item.venue)}` : ''}</p></article>`).join('') : '<div class="empty">Ближайшие концерты не найдены.</div>';
 }
@@ -133,6 +154,7 @@ async function initialize() {
 }
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
+$('today-overview').addEventListener('click', event => { const button = event.target.closest('[data-view]'); if (button) showView(button.dataset.view); });
 document.querySelectorAll('[data-task-filter]').forEach(button => button.addEventListener('click', () => { state.filter = button.dataset.taskFilter; document.querySelectorAll('[data-task-filter]').forEach(item => item.classList.toggle('active', item === button)); renderTasks(); }));
 $('new-task').onclick = () => openTask();
 $('task-list').onclick = event => { const card = event.target.closest('[data-task-id]'); if (card && event.target.closest('[data-edit-task]')) openTask(state.tasks.find(item => item.id === card.dataset.taskId)); };
