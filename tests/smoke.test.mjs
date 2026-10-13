@@ -198,7 +198,7 @@ test('documents keep PDF evidence and CSV imports separate from operational fact
   assert.match(html, /Документ — первичный источник/);
   assert.match(js, /const documentBucket = 'legacy-brain-source-documents'/);
   assert.match(js, /createSignedUrl/);
-  assert.match(js, /не змінює дані автоматично/);
+  assert.match(js, /не меняют данные автоматически/);
   assert.match(js, /function parseCsv/);
   assert.match(js, /data-preview-csv/);
   assert.match(js, /daria_apply_meta_csv_import/);
@@ -236,7 +236,7 @@ test('daily sales snapshots retain a source document rather than becoming unsupp
   assert.match(migration, /add column if not exists source_document_id/);
   assert.match(migration, /daria_audit_daily_sales_snapshots/);
   assert.match(js, /source_document_id: raw\.source_document_id/);
-  assert.match(html, /Не додавай сюди загальні суми різних операторів/);
+  assert.match(html, /Не добавляйте сюда общие суммы разных операторов/);
   assert.match(js, /Разных операторов здесь не складываем/);
   assert.match(css, /\.snapshot-bars/);
 });
@@ -272,7 +272,7 @@ test('operators preserve contract capabilities and unknown fields', () => {
   assert.match(html, /id="operator-form"/);
   for (const field of ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'customer_data_access', 'payout_timing', 'legacy_recommendation']) assert.match(html, new RegExp(`name="${field}"`));
   assert.match(js, /daria_ticketing_operators'\)\.select\('\*'\)/);
-  assert.match(js, /Порожнє поле означає «не зафіксовано»/);
+  assert.match(js, /Пустое поле означает «не зафиксировано»/);
   assert.match(html, /id="operator-comparison"/);
   assert.match(js, /function renderOperators/);
   assert.match(js, /function capability/);

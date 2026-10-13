@@ -7,9 +7,9 @@ const bookingConcerts = [
   { id: 'kielce', date: '04.10.2026', eventDate: '2026-10-04', city: 'Кельце', title: 'Vintage Rock Legends', venue: 'Filharmonia Świętokrzyska', capacity: 506, breakEven: 286 }
 ];
 const bookingOperators = [
-  ['kupbilecik', 'KupBilecik', 'основні продажі'],
-  ['ebilet', 'eBilet', 'партнерські продажі'],
-  ['bilety24', 'Bilety24', 'партнерські продажі']
+  ['kupbilecik', 'KupBilecik', 'основные продажи'],
+  ['ebilet', 'eBilet', 'партнёрские продажи'],
+  ['bilety24', 'Bilety24', 'партнёрские продажи']
 ];
 const statuses = ['DRAFT', 'PLANNED', 'ON_SALE', 'ACTIVE', 'ON_HOLD', 'POSTPONED', 'CANCELLED', 'COMPLETED'];
 const labels = {
@@ -356,7 +356,7 @@ function snapshotTimelines(snapshots) {
     const ordered = [...group].sort((left, right) => String(left.snapshot_date).localeCompare(String(right.snapshot_date)));
     const maxTickets = Math.max(...ordered.map(snapshot => Number(snapshot.tickets_sold_total) || 0), 1);
     const name = ordered.at(-1).operator_name || 'оператор не вказаний';
-    return `<div class="detail-line"><b>${esc(name)} · динаміка зрізів</b><div class="snapshot-bars">${ordered.map(snapshot => `<span title="${esc(dateLabel(snapshot.snapshot_date))}: ${fmt(snapshot.tickets_sold_total)} кв." style="height:${Math.max(8, Math.round((Number(snapshot.tickets_sold_total) || 0) / maxTickets * 100))}%"><i>${fmt(snapshot.tickets_sold_total)}</i></span>`).join('')}</div><span>${esc(dateLabel(ordered[0].snapshot_date))} → ${esc(dateLabel(ordered.at(-1).snapshot_date))} · лише цей оператор</span></div>`;
+    return `<div class="detail-line"><b>${esc(name)} · динамика срезов</b><div class="snapshot-bars">${ordered.map(snapshot => `<span title="${esc(dateLabel(snapshot.snapshot_date))}: ${fmt(snapshot.tickets_sold_total)} бил." style="height:${Math.max(8, Math.round((Number(snapshot.tickets_sold_total) || 0) / maxTickets * 100))}%"><i>${fmt(snapshot.tickets_sold_total)}</i></span>`).join('')}</div><span>${esc(dateLabel(ordered[0].snapshot_date))} → ${esc(dateLabel(ordered.at(-1).snapshot_date))} · только этот оператор</span></div>`;
   }).join('');
 }
 
@@ -410,7 +410,7 @@ function milestonePaceSummary(milestone, sold, snapshots) {
 }
 
 function checklistItem(done, title, copy, action = '') {
-  return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОДАТИ ДЖЕРЕЛО' : 'ДОДАТИ ЗРІЗ'}</button>` : ''}</span></div>`;
+  return `<div class="detail-line"><b>${done ? '✓' : '○'} ${esc(title)}</b><span>${esc(copy)}${action ? ` · <button class="text-button" type="button" data-detail-action="${action}">${action === 'source' ? 'ДОБАВИТЬ ИСТОЧНИК' : 'ДОБАВИТЬ СРЕЗ'}</button>` : ''}</span></div>`;
 }
 
 function concertChannelPerformance(campaigns, orders, channels, currency, confirmedReports = []) {
@@ -453,13 +453,13 @@ function renderConcertDetail() {
   if (state.detailTab === 'TASKS') content = `<button class="button subtle" type="button" data-add-detail-task="${esc(concert.id)}">+ ДОБАВИТЬ ЗАДАЧУ</button>${detail.tasks.map(task => `<div class="detail-line"><b>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))} · ${esc(task.title)}</b><span>${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'} · исполнитель: ${esc(opsPerson(task.assignee_ops_user_id))}${task.task_status === 'WAITING_FOR_DECISION' ? ` · решение: ${esc(opsPerson(task.blocked_by_ops_user_id))}` : ''}${task.details ? ` · ${esc(task.details)}` : ''} · <button class="text-button danger" type="button" data-delete-detail-task="${esc(task.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Для этого концерта задач ещё нет.</div>'}`;
   if (state.detailTab === 'SALES' || state.detailTab === 'ORDERS') { const orders = state.detailTab === 'SALES' ? detail.orders.filter(order => order.status === 'PAID') : detail.orders; content = orders.map(order => `<div class="detail-line"><b>${esc(order.external_order_id)}</b><span>${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)} · ${esc(label('attribution', order.attribution_type))} · <button class="text-button danger" type="button" data-delete-detail-order="${esc(order.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Записей ещё нет.</div>'; }
   if (state.detailTab === 'DAILY') { const changes = snapshotChanges(detail.snapshots); content = `<button class="button subtle" type="button" data-add-snapshot="${esc(concert.id)}">+ ДОБАВИТЬ ЕЖЕДНЕВНЫЙ СРЕЗ</button><div class="truth-note">Изменение считается только между двумя последними срезами одного оператора и одной валюты. Разных операторов здесь не складываем.</div>${changes.map(change => `<div class="detail-line"><b>${esc(change.latest.operator_name || 'оператор не указан')} · по состоянию на ${esc(dateLabel(change.latest.snapshot_date))}</b><span>${fmt(change.latest.tickets_sold_total)} бил. · ${money(change.latest.revenue_total, change.latest.currency)}${change.previous ? ` · изменение: ${change.ticketDelta >= 0 ? '+' : ''}${fmt(change.ticketDelta)} бил.${change.revenueDelta == null ? ' · другая валюта — без изменения выручки' : ` · ${change.revenueDelta >= 0 ? '+' : ''}${money(change.revenueDelta, change.latest.currency)}`}` : ' · предыдущего среза ещё нет'} · ${esc(change.latest.source_name || 'источник не привязан')} · <button class="text-button danger" type="button" data-delete-snapshot="${esc(change.latest.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Ежедневных срезов ещё нет.</div>'}${snapshotTimelines(detail.snapshots)}<div class="detail-notes">${detail.snapshots.map(snapshot => `${dateLabel(snapshot.snapshot_date)} · ${snapshot.operator_name || 'оператор не указан'} · ${snapshot.source_name || 'источник не привязан'}${snapshot.source_note ? ` · ${snapshot.source_note}` : ''}`).join('\n') || ''}</div>`; }
-  if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата джерела не задана')} · ${esc(label('documentStatus', document.import_status))}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ВІДКРИТИ</button> · <button class="text-button danger" type="button" data-delete-detail-document="${esc(document.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">До цього концерту ще не прив’язано PDF або CSV-джерел.</div>';
+  if (state.detailTab === 'SOURCES') content = detail.documents.map(document => `<div class="detail-line"><b>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(document.source_name)}</b><span>${esc(document.source_date || 'дата источника не указана')} · ${esc(label('documentStatus', document.import_status))}${document.notes ? ` · ${esc(document.notes)}` : ''} · <button class="text-button" type="button" data-open-detail-document="${esc(document.id)}">ОТКРЫТЬ</button> · <button class="text-button danger" type="button" data-delete-detail-document="${esc(document.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">К этому концерту ещё не привязаны документы или табличные выгрузки.</div>';
   if (state.detailTab === 'CHANNELS') content = `<div class="truth-note">Подтверждённые показатели основаны на оплаченных заказах с подтверждённым источником либо на последнем итоговом отчёте оператора, если заказов по кампании нет. Показатели рекламной платформы показаны отдельно.</div><div class="csv-table">${concertChannelPerformance(detail.campaigns, detail.orders, detail.channels || [], concert.currency || 'PLN', detail.confirmedReports || [])}</div>`;
   if (state.detailTab === 'FINANCE') content = detail.expenses.map(expense => `<div class="detail-line"><b>${esc(expense.description || expense.category)}</b><span>${esc(label('expenseType', expense.expense_type))} · ${esc(label('paymentStatus', expense.payment_status))} · ${money(expense.amount, expense.currency)} · <button class="text-button danger" type="button" data-delete-detail-expense="${esc(expense.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Расходов ещё нет.</div>';
   if (state.detailTab === 'TRACKING') content = detail.links.map(link => `<div class="detail-line"><b>${esc(link.source_code)}</b><span>${esc(link.destination_url || link.statistical_url || 'Ссылка не задана')} · <button class="text-button danger" type="button" data-delete-detail-link="${esc(link.id)}">УДАЛИТЬ</button></span></div>`).join('') || '<div class="empty">Ссылок для отслеживания ещё нет.</div>';
   if (state.detailTab === 'NOTES') content = `<div class="detail-notes">${esc(concert.notes || 'Заметок нет.')}</div>`;
   if (state.detailTab === 'HISTORY') content = detail.auditError ? '<div class="empty">Журнал изменений недоступен для этой роли. Примените миграцию 0004_manager_audit_read.sql.</div>' : detail.audit.map(entry => `<div class="detail-line"><b>${esc(entry.entity_type)} · ${esc(entry.action)}</b><span>${entry.created_at ? new Date(entry.created_at).toLocaleString('ru-RU') : 'время не зафиксировано'} · ${help(auditActorLabel(entry), entry.user_id ? `Полный идентификатор автора: ${entry.user_id}` : 'Идентификатор автора отсутствует в этой старой записи.')}</span></div>`).join('') || '<div class="empty">Изменений этого концерта ещё не зафиксировано.</div>';
-  byId('concert-detail').innerHTML = `<p class="eyebrow">КАРТКА КОНЦЕРТУ · ${detail.server ? 'СПІЛЬНА БАЗА' : 'ОБМЕЖЕНИЙ ПЕРЕГЛЯД'}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'майданчик не задано')}</small><div class="detail-tabs">${tabs}</div><div class="detail-content">${content}</div><label class="quick-status">ШВИДКА ЗМІНА СТАТУСУ<select id="quick-status">${statuses.map(status => `<option value="${status}" ${status === concert.status ? 'selected' : ''}>${esc(label('status', status))}</option>`).join('')}</select></label><div class="detail-actions"><button class="button" type="button" id="edit-selected">РЕДАГУВАТИ</button></div>`;
+  byId('concert-detail').innerHTML = `<p class="eyebrow">КАРТОЧКА КОНЦЕРТА · ${detail.server ? 'ОБЩАЯ БАЗА' : 'ОГРАНИЧЕННЫЙ ПРОСМОТР'}</p><h2>${esc(concert.event_name)}</h2><small>${esc(concert.city)} · ${esc(dateLabel(concert.event_date))} · ${esc(concert.venue || 'площадка не указана')}</small><div class="detail-tabs">${tabs}</div><div class="detail-content">${content}</div><label class="quick-status">БЫСТРАЯ СМЕНА СТАТУСА<select id="quick-status">${statuses.map(status => `<option value="${status}" ${status === concert.status ? 'selected' : ''}>${esc(label('status', status))}</option>`).join('')}</select></label><div class="detail-actions"><button class="button" type="button" id="edit-selected">ИЗМЕНИТЬ</button></div>`;
   byId('concert-detail').querySelector('.detail-actions').insertAdjacentHTML('beforeend', '<button class="button subtle" type="button" id="open-regulation">РЕГЛАМЕНТ ЗАПУСКА</button>');
   byId('open-regulation').addEventListener('click', () => { window.regulationSelectConcert?.(concert.id); showView('regulation'); });
   document.querySelectorAll('[data-detail-tab]').forEach(button => button.addEventListener('click', () => { state.detailTab = button.dataset.detailTab; renderConcertDetail(); }));
@@ -527,12 +527,12 @@ function concertPayload(form) {
 }
 
 function openConcertForm(concert = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати концерти.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать концерты.')) return;
   const form = byId('concert-form');
   form.reset();
   form.hidden = false;
   byId('form-mode').textContent = concert ? 'РЕДАГУВАННЯ' : 'НОВИЙ КОНЦЕРТ';
-  byId('form-title').textContent = concert ? concert.event_name : 'Додати подію';
+  byId('form-title').textContent = concert ? concert.event_name : 'Добавить событие';
   byId('concert-form-note').textContent = '';
   form.elements.id.value = concert?.id || '';
   const fields = ['event_name', 'project_name', 'city', 'venue', 'event_date', 'capacity', 'status', 'ticket_sales_start_date', 'average_ticket_price', 'break_even_mode', 'break_even_tickets', 'planned_marketing_budget', 'currency', 'notes', 'risk_status'];
@@ -543,7 +543,7 @@ function openConcertForm(concert = null) {
 
 async function saveConcert(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти концерт.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить концерт.')) return;
   const form = event.currentTarget;
   const { id, payload } = concertPayload(form);
   const submit = form.querySelector('[type="submit"]');
@@ -553,13 +553,13 @@ async function saveConcert(event) {
   submit.disabled = false;
   if (result.error) { byId('concert-form-note').textContent = `Помилка: ${result.error.message}`; return; }
   form.hidden = true;
-  setStatus(id ? 'Концерт оновлено у спільній базі' : 'Концерт додано до спільної бази');
+  setStatus(id ? 'Концерт обновлён в общей базе' : 'Концерт добавлен в общую базу');
   await loadOperations();
   if (id) selectConcert(id);
 }
 
 async function openSnapshotForm(concert) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб додати щоденний зріз.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы добавить ежедневный срез.')) return;
   if (!state.operators.length) {
     const { data } = await db.from('daria_ticketing_operators').select('id,name').order('name');
     state.operators = data || [];
@@ -567,9 +567,9 @@ async function openSnapshotForm(concert) {
   await loadDocumentsModule();
   const documents = state.documents.filter(document => !document.concert_id || document.concert_id === concert.id);
   if (!documents.length) { setStatus('Спочатку завантажте PDF або CSV-джерело для цього концерту.', true); showView('documents'); return; }
-  if (!state.operators.length) { setStatus('Спочатку додайте або підтвердьте квиткового оператора.', true); showView('operators'); return; }
+  if (!state.operators.length) { setStatus('Сначала добавьте или подтвердите билетного оператора.', true); showView('operators'); return; }
   const form = byId('snapshot-form'); form.reset(); form.hidden = false;
-  byId('snapshot-form-title').textContent = `Зріз · ${concert.event_name}`;
+  byId('snapshot-form-title').textContent = `Срез · ${concert.event_name}`;
   byId('snapshot-form-note').textContent = ''; form.elements.concert_id.value = concert.id; form.elements.currency.value = concert.currency || 'PLN'; form.elements.snapshot_date.value = new Date().toISOString().slice(0, 10);
   setSelectOptions('snapshot-operator', state.operators.map(operator => `<option value="${esc(operator.id)}">${esc(operator.name)}</option>`).join(''));
   setSelectOptions('snapshot-source-document', documents.map(document => `<option value="${esc(document.id)}">${esc(document.source_name)} · ${esc(document.source_date || 'без дати')}</option>`).join(''));
@@ -578,14 +578,14 @@ async function openSnapshotForm(concert) {
 
 async function saveSnapshot(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти щоденний зріз.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить ежедневный срез.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
   const payload = { concert_id: raw.concert_id, operator_id: raw.operator_id, snapshot_date: raw.snapshot_date, tickets_sold_total: Number(raw.tickets_sold_total), revenue_total: Number(raw.revenue_total), currency: raw.currency.trim().toUpperCase() || 'PLN', source_document_id: raw.source_document_id, source_note: raw.source_note.trim() };
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('snapshot-form-note').textContent = 'Збереження зрізу…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('snapshot-form-note').textContent = 'Сохранение среза…';
   const { error } = await db.from('daria_daily_sales_snapshots').upsert(payload, { onConflict: 'concert_id,operator_id,snapshot_date' });
   submit.disabled = false;
-  if (error) { byId('snapshot-form-note').textContent = `Зріз не збережено: ${error.message}`; return; }
-  form.hidden = true; setStatus('Щоденний зріз збережено з прив’язаним джерелом'); await selectConcert(raw.concert_id);
+  if (error) { byId('snapshot-form-note').textContent = `Срез не сохранён: ${error.message}`; return; }
+  form.hidden = true; setStatus('Ежедневный срез сохранён с привязанным источником'); await selectConcert(raw.concert_id);
 }
 
 function syncMilestoneTicketField() {
@@ -659,7 +659,7 @@ function renderTasks() {
     const overdue = taskIsOpen(task) && task.due_date && task.due_date < today;
     const responsibility = `исполнитель: ${opsPerson(task.assignee_ops_user_id)}${task.task_status === 'WAITING_FOR_DECISION' ? ` · решение: ${opsPerson(task.blocked_by_ops_user_id)}` : ''}`;
     return `<article class="expense-row"><div><small>${esc(label('priority', task.priority))} · ${esc(label('taskStatus', task.task_status))}${overdue ? ' · ПРОСРОЧЕНО' : ''}</small><h3>${esc(task.title)}</h3><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'не привязано к концерту')} · ${task.due_date ? esc(dateLabel(task.due_date)) : 'срок не указан'}</small><small>${esc(responsibility)}</small></div><div class="expense-meta"><span>${esc(task.details || 'без деталей')}</span><span>${task.completed_at ? `выполнено ${esc(new Date(task.completed_at).toLocaleString('ru-RU'))}` : ''}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-task="${esc(task.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-task="${esc(task.id)}">УДАЛИТЬ</button></div></article>`;
-  }).join('') || '<div class="empty">За цим фільтром задач немає.</div>';
+  }).join('') || '<div class="empty">По этому фильтру задач нет.</div>';
   const open = state.tasks.filter(taskIsOpen), critical = open.filter(task => task.priority === 'CRITICAL'), overdue = open.filter(task => task.due_date && task.due_date < today);
   byId('t-open').textContent = fmt(open.length); byId('t-critical').textContent = fmt(critical.length); byId('t-overdue').textContent = fmt(overdue.length); byId('t-done').textContent = fmt(state.tasks.filter(task => task.task_status === 'DONE').length);
 }
@@ -682,9 +682,9 @@ async function loadTasksModule() {
 }
 
 function openTaskForm(task = null, concert = null, draft = {}) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати задачі.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать задачи.')) return;
   const form = byId('task-form'); form.reset(); form.hidden = false; byId('task-form-note').textContent = '';
-  byId('task-form-mode').textContent = task ? 'РЕДАГУВАННЯ ЗАДАЧІ' : 'НОВА ЗАДАЧА'; byId('task-form-title').textContent = task ? task.title : 'Додати задачу'; form.elements.id.value = task?.id || '';
+  byId('task-form-mode').textContent = task ? 'РЕДАКТИРОВАНИЕ ЗАДАЧИ' : 'НОВАЯ ЗАДАЧА'; byId('task-form-title').textContent = task ? task.title : 'Добавить задачу'; form.elements.id.value = task?.id || '';
   const options = state.concerts.map(item => `<option value="${esc(item.id)}">${esc(item.event_name)} · ${esc(item.city)}</option>`).join(''); setSelectOptions('task-concert', options, true, 'НЕ ПРИВ’ЯЗАНО');
   syncTaskPeopleOptions();
   const fields = ['concert_id', 'title', 'details', 'task_status', 'priority', 'due_date', 'assignee_ops_user_id', 'blocked_by_ops_user_id'];
@@ -699,7 +699,7 @@ function openTaskForm(task = null, concert = null, draft = {}) {
 
 async function saveTask(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти задачу.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить задачу.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), existing = state.tasks.find(task => task.id === raw.id);
   if (raw.task_status === 'WAITING_FOR_DECISION' && !raw.blocked_by_ops_user_id) { byId('task-form-note').textContent = 'Укажите, чьего решения ждёт задача.'; return; }
   const payload = { concert_id: raw.concert_id || null, title: raw.title.trim(), details: raw.details.trim(), task_status: raw.task_status, priority: raw.priority, due_date: raw.due_date || null, assignee_ops_user_id: raw.assignee_ops_user_id || null, blocked_by_ops_user_id: raw.task_status === 'WAITING_FOR_DECISION' ? raw.blocked_by_ops_user_id : null, completed_at: raw.task_status === 'DONE' ? existing?.completed_at || new Date().toISOString() : null, updated_at: new Date().toISOString() };
@@ -712,10 +712,10 @@ async function saveTask(event) {
 }
 
 async function updateConcertStatus(id, nextStatus) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб змінити статус.')) { selectConcert(id); return; }
+  if (!requireEditor('Войдите через рабочую почту, чтобы изменить статус.')) { selectConcert(id); return; }
   const { error } = await db.from('daria_concerts').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) { setStatus(`Не вдалося змінити статус: ${error.message}`, true); selectConcert(id); return; }
-  setStatus(`Статус змінено на ${nextStatus}`);
+  if (error) { setStatus(`Не удалось изменить статус: ${error.message}`, true); selectConcert(id); return; }
+  setStatus(`Статус изменён на ${nextStatus}`);
   await loadOperations();
   selectConcert(id);
 }
@@ -858,7 +858,7 @@ async function loadOperations() {
   renderDashboardOperatorAnswer(operatorsResult.data || [], Boolean(operatorsResult.error));
   const note = byId('dashboard-note');
   note.classList.toggle('error', errors.length > 0);
-  note.textContent = errors.length ? `Частину даних не завантажено — нулі не підставлено. ${errors.join(' · ')}` : reportsResult.error || unattributedReportsResult.error ? `Итоги операторов станут доступны после применения следующей миграции базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, итоги без измеряемого источника, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
+  note.textContent = errors.length ? `Часть данных не загружена — нули не подставлены. ${errors.join(' · ')}` : reportsResult.error || unattributedReportsResult.error ? `Итоги операторов станут доступны после применения следующего обновления базы. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.` : `Факт: оплаченные заказы, подтверждённые итоги операторов без номеров заказов, итоги без измеряемого источника, внесённые расходы и фактические расходы кампаний. «Без свежего среза» означает отсутствие нового подтверждённого отчёта для ${fmt(staleSnapshots.length)} активных концертов, а не отсутствие продаж.`;
   if (!concertsResult.error) renderConcerts();
 }
 
@@ -870,7 +870,7 @@ function populateOrderOptions() {
   const campaignOptions = state.campaigns.map(campaign => `<option value="${esc(campaign.id)}">${esc(campaign.source_code)} · ${esc(campaign.campaign_name)}</option>`).join('');
   byId('order-campaign').innerHTML = `<option value="">НЕ ВСТАНОВЛЕНО — UNKNOWN</option>${campaignOptions}`;
   const selected = byId('order-concert-filter').value;
-  byId('order-concert-filter').innerHTML = `<option value="ALL">УСІ</option>${concertOptions}`;
+  byId('order-concert-filter').innerHTML = `<option value="ALL">ВСЕ</option>${concertOptions}`;
   if ([...byId('order-concert-filter').options].some(option => option.value === selected)) byId('order-concert-filter').value = selected;
 }
 
@@ -883,7 +883,7 @@ function renderSales() {
     const concert = state.concerts.find(item => item.id === order.concert_id);
     const operator = state.operators.find(item => item.id === order.operator_id);
     return `<article class="expense-row"><div><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'Концерт не найден')}</small><h3>${esc(order.external_order_id)}</h3><small>${esc(operator?.name || 'оператор не указан')} · ${esc(label('attribution', order.attribution_type))}${order.source_code ? ` · ${esc(order.source_code)}` : ''}</small></div><strong class="expense-amount">${fmt(order.ticket_count)} бил. · ${money(order.gross_revenue, order.currency)}</strong><div class="expense-meta"><span class="expense-status ${order.status === 'PAID' ? 'paid' : ''}">${esc(label('orderStatus', order.status))}</span><span>${order.order_date ? esc(new Date(order.order_date).toLocaleString('ru-RU')) : 'время не указано'}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-order="${esc(order.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-order="${esc(order.id)}">УДАЛИТЬ</button></div></article>`;
-  }).join('') || '<div class="empty">За цим фільтром замовлень немає.</div>';
+  }).join('') || '<div class="empty">По этому фильтру заказов нет.</div>';
   const paid = state.orders.filter(order => order.status === 'PAID');
   const fallbackOperatorReports = latestFallbackOperatorReports(state.campaigns, paid, state.campaignConfirmedReports);
   const fallbackUnattributedReports = latestFallbackUnattributedReports(state.unattributedOperatorReports, paid);
@@ -898,8 +898,8 @@ function renderSales() {
 async function loadSalesModule() {
   if (!state.session) {
     ['s-paid-tickets', 's-paid-gross', 's-refunded', 's-unknown'].forEach(id => { byId(id).textContent = '—'; });
-    byId('order-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити замовлення.</div>';
-    byId('sales-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як нуль продажів.';
+    byId('order-list').innerHTML = '<div class="empty">Войдите в рабочую учётную запись, чтобы открыть заказы.</div>';
+    byId('sales-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не трактуется как ноль продаж.';
     state.orders = [];
     return;
   }
@@ -938,8 +938,8 @@ function localDateTime(value) {
 }
 
 function openOrderForm(order = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати замовлення.')) return;
-  if (!state.concerts.length) { setStatus('Спочатку додайте концерт до реєстру.', true); return; }
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать заказы.')) return;
+  if (!state.concerts.length) { setStatus('Сначала добавьте концерт в реестр.', true); return; }
   const form = byId('order-form');
   populateOrderOptions();
   form.reset();
@@ -960,7 +960,7 @@ function openOrderForm(order = null) {
 
 async function saveOrder(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти замовлення.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить заказ.')) return;
   const form = event.currentTarget;
   const raw = Object.fromEntries(new FormData(form));
   const id = raw.id;
@@ -972,7 +972,7 @@ async function saveOrder(event) {
   submit.disabled = false;
   if (result.error) { byId('order-form-note').textContent = `Помилка: ${result.error.message}`; return; }
   form.hidden = true;
-  setStatus(id ? 'Замовлення оновлено у спільній базі' : 'Замовлення додано до спільної бази');
+  setStatus(id ? 'Заказ обновлён в общей базе' : 'Заказ добавлен в общую базу');
   await Promise.all([loadSalesModule(), loadOperations()]);
 }
 
@@ -1008,14 +1008,14 @@ function renderDocuments() {
     const preview = document.document_type === 'PDF_REPORT' ? '' : `<button class="text-button" type="button" data-preview-csv="${esc(document.id)}">ПЕРЕГЛЯД CSV</button>`;
     const apply = document.document_type === 'META_CSV' ? `<button class="text-button" type="button" data-apply-meta="${esc(document.id)}">ЗАСТОСУВАТИ META</button>` : '';
     return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(label('documentStatus', document.import_status))}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не привязано к концерту')} · ${esc(document.source_date || 'дата источника не указана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без заметки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('ru-RU') : ''}</span></div><div class="document-actions">${preview}${apply}<button class="text-button" type="button" data-open-document="${esc(document.id)}">ОТКРЫТЬ</button><button class="text-button danger" type="button" data-delete-document="${esc(document.id)}">УДАЛИТЬ</button></div></article>`;
-  }).join('') || '<div class="empty">Документів ще немає.</div>';
+  }).join('') || '<div class="empty">Документов ещё нет.</div>';
 }
 
 async function loadDocumentsModule() {
   if (!state.session) {
     ['d-total', 'd-pdf', 'd-review', 'd-applied'].forEach(id => { byId(id).textContent = '—'; });
-    byId('document-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити документи.</div>';
-    byId('documents-note').textContent = 'Документи захищені політиками доступу; порожня відповідь не означає, що їх немає.';
+    byId('document-list').innerHTML = '<div class="empty">Войдите в рабочую учётную запись, чтобы открыть документы.</div>';
+    byId('documents-note').textContent = 'Документы защищены правилами доступа; пустой ответ не означает, что документов нет.';
     state.documents = [];
     return;
   }
@@ -1025,11 +1025,11 @@ async function loadDocumentsModule() {
   state.documents = data || [];
   renderDocuments();
   byId('documents-note').classList.remove('error');
-  byId('documents-note').textContent = 'PDF — первинне джерело. CSV Meta та операторів зберігається для перевірки й не змінює дані автоматично.';
+  byId('documents-note').textContent = 'Документ PDF — первичный источник. Таблицы Meta и операторов сохраняются для проверки и не меняют данные автоматически.';
 }
 
 function openDocumentForm(concert = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб завантажити документ.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы загрузить документ.')) return;
   const form = byId('document-form');
   form.reset(); form.hidden = false; byId('document-form-note').textContent = '';
   const options = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
@@ -1039,11 +1039,11 @@ function openDocumentForm(concert = null) {
 
 async function saveDocument(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб завантажити документ.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы загрузить документ.')) return;
   const form = event.currentTarget, file = form.elements.file.files[0];
   const allowed = ['application/pdf', 'text/csv', 'application/csv'];
   if (!file || (!allowed.includes(file.type) && !/\.(pdf|csv)$/i.test(file.name))) { byId('document-form-note').textContent = 'Додайте PDF або CSV файл.'; return; }
-  if (file.size > 20971520) { byId('document-form-note').textContent = 'Максимальний розмір файлу — 20 MB.'; return; }
+  if (file.size > 20971520) { byId('document-form-note').textContent = 'Максимальный размер файла — 20 МБ.'; return; }
   const raw = Object.fromEntries(new FormData(form));
   const extension = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'csv';
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120);
@@ -1065,7 +1065,7 @@ async function openDocument(id) {
 async function openDocumentRecord(document) {
   if (!document) return;
   const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
-  if (error) { setStatus(`Документ не відкрито: ${error.message}`, true); return; }
+  if (error) { setStatus(`Документ не открыт: ${error.message}`, true); return; }
   window.open(data.signedUrl, '_blank', 'noopener');
 }
 
@@ -1141,23 +1141,23 @@ async function previewCsvDocument(id) {
   if (!document) return;
   preview.hidden = false; preview.textContent = 'Завантаження preview…';
   const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
-  if (error) { preview.textContent = `CSV не відкрито: ${error.message}`; preview.classList.add('error'); return; }
+  if (error) { preview.textContent = `Таблица не открыта: ${error.message}`; preview.classList.add('error'); return; }
   const response = await fetch(data.signedUrl, { cache: 'no-store' });
   if (!response.ok) { preview.textContent = `CSV не завантажено: HTTP ${response.status}`; preview.classList.add('error'); return; }
   const csvText = await response.text();
   const rows = parseCsv(csvText, csvDelimiter(csvText));
-  if (!rows.length) { preview.textContent = 'CSV порожній або не має читабельних рядків.'; preview.classList.add('error'); return; }
+  if (!rows.length) { preview.textContent = 'Таблица пуста или не содержит читаемых строк.'; preview.classList.add('error'); return; }
   const headers = rows[0], samples = rows.slice(1, 7);
   preview.classList.remove('error');
-  preview.innerHTML = `<p class="eyebrow">PREVIEW · ${esc(document.source_name)}</p><p>Виявлено ${fmt(Math.max(0, rows.length - 1))} рядків і ${fmt(headers.length)} колонок. Це лише перегляд: жоден рядок не застосовано до кампаній або продажів.</p><div class="csv-table"><table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join('')}</tr></thead><tbody>${samples.map(row => `<tr>${headers.map((_, index) => `<td>${esc(row[index] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  preview.innerHTML = `<p class="eyebrow">ПРЕДПРОСМОТР · ${esc(document.source_name)}</p><p>Найдено ${fmt(Math.max(0, rows.length - 1))} строк и ${fmt(headers.length)} столбцов. Это только просмотр: ни одна строка не применена к кампаниям или продажам.</p><div class="csv-table"><table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join('')}</tr></thead><tbody>${samples.map(row => `<tr>${headers.map((_, index) => `<td>${esc(row[index] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
 async function openMetaApplyForm(id) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб застосувати перевірений Meta CSV.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы применить проверенную таблицу Meta.')) return;
   const document = state.documents.find(item => item.id === id);
   if (!document || document.document_type !== 'META_CSV') return;
   if (!state.campaigns.length) await loadChannelsModule();
-  if (!state.campaigns.length) { setStatus('Спочатку створіть кампанію для застосування Meta CSV.', true); return; }
+  if (!state.campaigns.length) { setStatus('Сначала создайте кампанию для применения таблицы Meta.', true); return; }
   const form = byId('meta-apply-form'); form.reset(); form.hidden = false;
   form.elements.source_document_id.value = id; form.elements.rows_reviewed.value = '0'; byId('meta-apply-note').textContent = '';
   const options = state.campaigns.map(campaign => {
@@ -1174,9 +1174,9 @@ async function openMetaApplyForm(id) {
 
 async function applyMetaCsv(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб застосувати перевірений Meta CSV.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы применить проверенную таблицу Meta.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('meta-apply-note').textContent = 'Застосування перевірених даних…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('meta-apply-note').textContent = 'Применение проверенных данных…';
   const { error } = await db.rpc('daria_apply_meta_csv_import', {
     p_source_document_id: raw.source_document_id,
     p_campaign_id: raw.campaign_id,
@@ -1185,11 +1185,11 @@ async function applyMetaCsv(event) {
     p_platform_value: Number(raw.platform_value),
     p_rows_reviewed: Number(raw.rows_reviewed || 0)
   });
-  if (error) { submit.disabled = false; byId('meta-apply-note').textContent = `Meta CSV не застосовано: ${error.message}`; return; }
+  if (error) { submit.disabled = false; byId('meta-apply-note').textContent = `Таблица Meta не применена: ${error.message}`; return; }
   const delivery = await db.from('daria_campaigns').update({ platform_impressions: numberOrNull(raw.platform_impressions), platform_reach: numberOrNull(raw.platform_reach), platform_link_clicks: numberOrNull(raw.platform_link_clicks), platform_landing_page_views: numberOrNull(raw.platform_landing_page_views), entries: numberOrNull(raw.platform_landing_page_views), platform_metrics_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', raw.campaign_id);
   submit.disabled = false;
   if (delivery.error) { byId('meta-apply-note').textContent = `Основные показатели применены, но охват и переходы не сохранены: ${delivery.error.message}`; return; }
-  form.hidden = true; setStatus('Перевірені дані Meta CSV застосовано до кампанії');
+  form.hidden = true; setStatus('Проверенные данные таблицы Meta применены к кампании');
   await Promise.all([loadDocumentsModule(), loadChannelsModule(), loadOperations(), loadReportsModule()]);
 }
 
@@ -1282,31 +1282,31 @@ async function loadChannelsModule() {
 }
 
 function openChannelForm(channel = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати канали.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать каналы.')) return;
   const form = byId('channel-form'); form.reset(); form.hidden = false;
-  byId('channel-form-mode').textContent = channel ? 'РЕДАГУВАННЯ КАНАЛУ' : 'НОВИЙ КАНАЛ';
-  byId('channel-form-title').textContent = channel ? channel.name : 'Додати канал';
+  byId('channel-form-mode').textContent = channel ? 'РЕДАКТИРОВАНИЕ КАНАЛА' : 'НОВЫЙ КАНАЛ';
+  byId('channel-form-title').textContent = channel ? channel.name : 'Добавить канал';
   byId('channel-form-note').textContent = ''; form.elements.id.value = channel?.id || '';
   if (channel) { form.elements.name.value = channel.name; form.elements.code.value = channel.code; form.elements.is_active.checked = channel.is_active; }
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function saveChannel(event) {
-  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти канал.')) return;
+  event.preventDefault(); if (!requireEditor('Войдите через рабочую почту, чтобы сохранить канал.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
   const payload = { name: raw.name.trim(), code: raw.code.trim().toUpperCase(), is_active: form.elements.is_active.checked };
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('channel-form-note').textContent = 'Збереження…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('channel-form-note').textContent = 'Сохранение…';
   const result = raw.id ? await db.from('daria_sales_channels').update(payload).eq('id', raw.id) : await db.from('daria_sales_channels').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('channel-form-note').textContent = `Помилка: ${result.error.message}`; return; }
-  form.hidden = true; setStatus(raw.id ? 'Канал оновлено' : 'Канал додано'); await loadChannelsModule();
+  if (result.error) { byId('channel-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(raw.id ? 'Канал обновлён' : 'Канал добавлен'); await loadChannelsModule();
 }
 
 function openCampaignForm(campaign = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати кампанії.')) return;
-  if (!state.concerts.length || !state.channels.length) { setStatus('Спочатку додайте концерт і канал.', true); return; }
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать кампании.')) return;
+  if (!state.concerts.length || !state.channels.length) { setStatus('Сначала добавьте концерт и канал.', true); return; }
   const form = byId('campaign-form'); populateChannelOptions(); form.reset(); form.hidden = false;
-  byId('campaign-form-mode').textContent = campaign ? 'РЕДАГУВАННЯ КАМПАНІЇ' : 'НОВА КАМПАНІЯ'; byId('campaign-form-title').textContent = campaign ? campaign.campaign_name : 'Додати кампанію'; byId('campaign-form-note').textContent = ''; form.elements.id.value = campaign?.id || '';
+  byId('campaign-form-mode').textContent = campaign ? 'РЕДАКТИРОВАНИЕ КАМПАНИИ' : 'НОВАЯ КАМПАНИЯ'; byId('campaign-form-title').textContent = campaign ? campaign.campaign_name : 'Добавить кампанию'; byId('campaign-form-note').textContent = ''; form.elements.id.value = campaign?.id || '';
   const fields = ['concert_id', 'channel_id', 'campaign_name', 'source_code', 'planned_budget', 'actual_spend', 'start_date', 'end_date', 'status', 'attribution_quality', 'entries', 'platform_impressions', 'platform_reach', 'platform_link_clicks', 'platform_reported_orders', 'platform_reported_value', 'notes'];
   if (campaign) fields.forEach(field => { form.elements[field].value = campaign[field] ?? ''; });
   else { form.elements.status.value = 'TESTING'; form.elements.attribution_quality.value = 'UNKNOWN'; }
@@ -1439,22 +1439,22 @@ function generateCampaignSourceCode() {
 }
 
 async function saveCampaign(event) {
-  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти кампанію.')) return;
+  event.preventDefault(); if (!requireEditor('Войдите через рабочую почту, чтобы сохранить кампанию.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form));
   const code = raw.source_code.trim().toUpperCase();
   if (!/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(code)) { byId('campaign-form-note').textContent = 'Код источника должен состоять из латинских букв, цифр и подчёркиваний.'; return; }
   if (state.campaigns.some(item => item.source_code === code && item.id !== raw.id)) { byId('campaign-form-note').textContent = 'Такой код источника уже есть у другой кампании.'; return; }
   const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: code, planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_impressions: numberOrNull(raw.platform_impressions), platform_reach: numberOrNull(raw.platform_reach), platform_link_clicks: numberOrNull(raw.platform_link_clicks), platform_landing_page_views: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-form-note').textContent = 'Збереження…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_campaigns').update(payload).eq('id', id) : await db.from('daria_campaigns').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('campaign-form-note').textContent = `Помилка: ${result.error.message}`; return; }
-  form.hidden = true; setStatus(id ? 'Кампанію оновлено' : 'Кампанію додано'); await Promise.all([loadChannelsModule(), loadOperations()]);
+  if (result.error) { byId('campaign-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(id ? 'Кампания обновлена' : 'Кампания добавлена'); await Promise.all([loadChannelsModule(), loadOperations()]);
 }
 
 function openTrackingForm(link = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати tracking links.')) return;
-  if (!state.concerts.length) { setStatus('Спочатку додайте концерт.', true); return; }
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать учётные ссылки.')) return;
+  if (!state.concerts.length) { setStatus('Сначала добавьте концерт.', true); return; }
   const form = byId('tracking-link-form'); populateChannelOptions(); form.reset(); form.hidden = false;
   byId('tracking-form-mode').textContent = link ? 'РЕДАКТИРОВАНИЕ ССЫЛКИ' : 'НОВАЯ ССЫЛКА'; byId('tracking-form-title').textContent = link ? link.source_code : 'Добавить ссылку'; byId('tracking-form-note').textContent = ''; form.elements.id.value = link?.id || '';
   const fields = ['concert_id', 'campaign_id', 'operator_id', 'channel_id', 'source_code', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code', 'status', 'notes'];
@@ -1474,14 +1474,14 @@ function openTrackingForm(link = null) {
 }
 
 async function saveTrackingLink(event) {
-  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти tracking link.')) return;
+  event.preventDefault(); if (!requireEditor('Войдите через рабочую почту, чтобы сохранить учётную ссылку.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), id = raw.id;
   const campaign = raw.campaign_id ? state.campaigns.find(item => item.id === raw.campaign_id) : null;
   if (campaign && raw.source_code.trim() !== campaign.source_code) { byId('tracking-form-note').textContent = 'Код источника ссылки должен совпадать с кодом выбранной кампании.'; return; }
   const nullable = ['campaign_id', 'operator_id', 'channel_id', 'statistical_url', 'destination_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'promo_code'];
   const payload = { concert_id: raw.concert_id, source_code: raw.source_code.trim(), status: raw.status, notes: raw.notes.trim() };
   nullable.forEach(field => { payload[field] = raw[field]?.trim() || null; });
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('tracking-form-note').textContent = 'Збереження…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('tracking-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_tracking_links').update(payload).eq('id', id) : await db.from('daria_tracking_links').insert(payload);
   submit.disabled = false;
   if (result.error) { byId('tracking-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
@@ -1503,27 +1503,27 @@ function renderOperators() {
 
 async function loadOperatorsModule() {
   if (!state.session) {
-    byId('operator-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб завантажити операторів.</div>';
+    byId('operator-list').innerHTML = '<div class="empty">Войдите в рабочую учётную запись, чтобы загрузить операторов.</div>';
     byId('operator-comparison').innerHTML = '<div class="empty">Войдите, чтобы сравнить операторов.</div>';
-    byId('operators-note').textContent = 'Дані приховані політиками доступу; відсутність відповіді не означає відсутність умов договору.';
+    byId('operators-note').textContent = 'Данные скрыты правилами доступа; отсутствие ответа не означает отсутствие условий договора.';
     return;
   }
   const { data, error } = await db.from('daria_ticketing_operators').select('*').order('name');
   if (error) {
-    byId('operator-list').innerHTML = `<div class="empty">Не вдалося завантажити операторів: ${esc(error.message)}</div>`;
+    byId('operator-list').innerHTML = `<div class="empty">Не удалось загрузить операторов: ${esc(error.message)}</div>`;
     byId('operators-note').classList.add('error');
     return;
   }
   state.operators = data || [];
   renderOperators();
   byId('operators-note').classList.remove('error');
-  byId('operators-note').textContent = 'Відображені лише внесені умови. Порожнє поле означає «не зафіксовано», а не «немає».';
+  byId('operators-note').textContent = 'Показаны только внесённые условия. Пустое поле означает «не зафиксировано», а не «нет».';
 }
 
 function openOperatorForm(operator = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати операторів.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать операторов.')) return;
   const form = byId('operator-form'); form.reset(); form.hidden = false;
-  byId('operator-form-mode').textContent = operator ? 'РЕДАГУВАННЯ ОПЕРАТОРА' : 'НОВИЙ ОПЕРАТОР'; byId('operator-form-title').textContent = operator ? operator.name : 'Додати оператора'; byId('operator-form-note').textContent = ''; form.elements.id.value = operator?.id || '';
+  byId('operator-form-mode').textContent = operator ? 'РЕДАКТИРОВАНИЕ ОПЕРАТОРА' : 'НОВЫЙ ОПЕРАТОР'; byId('operator-form-title').textContent = operator ? operator.name : 'Добавить оператора'; byId('operator-form-note').textContent = ''; form.elements.id.value = operator?.id || '';
   const fields = ['name', 'website', 'marketplace_commission', 'own_sales_commission', 'payment_provider_fee', 'setup_fee', 'monthly_fee', 'capi_fee', 'customer_data_access', 'customer_email_access', 'customer_phone_access', 'payout_timing', 'organic_distribution', 'google_ads_support', 'meta_ads_support', 'account_manager_name', 'account_manager_email', 'account_manager_phone', 'last_offer_date', 'exclusive_required', 'exclusive_terms', 'negotiation_status', 'legacy_recommendation', 'contract_notes', 'notes'];
   const flags = ['supports_meta_pixel', 'supports_capi', 'supports_gtm', 'supports_statistical_links', 'supports_promo_codes', 'has_marketplace', 'sms_marketing_available', 'email_marketing_available'];
   if (operator) { fields.forEach(field => { form.elements[field].value = operator[field] ?? ''; }); flags.forEach(flag => { form.elements[flag].checked = Boolean(operator[flag]); }); }
@@ -1532,7 +1532,7 @@ function openOperatorForm(operator = null) {
 }
 
 async function saveOperator(event) {
-  event.preventDefault(); if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти оператора.')) return;
+  event.preventDefault(); if (!requireEditor('Войдите через рабочую почту, чтобы сохранить оператора.')) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)), id = raw.id;
   const numberFields = ['marketplace_commission', 'own_sales_commission', 'payment_provider_fee', 'setup_fee', 'monthly_fee', 'capi_fee'];
   const textFields = ['website', 'customer_data_access', 'customer_email_access', 'customer_phone_access', 'payout_timing', 'organic_distribution', 'google_ads_support', 'meta_ads_support', 'account_manager_name', 'account_manager_email', 'account_manager_phone', 'exclusive_required', 'exclusive_terms', 'negotiation_status', 'legacy_recommendation', 'contract_notes', 'notes'];
@@ -1821,7 +1821,7 @@ function populateConcertOptions() {
   const options = state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join('');
   byId('expense-concert').innerHTML = options;
   const selected = byId('expense-concert-filter').value;
-  byId('expense-concert-filter').innerHTML = `<option value="ALL">УСІ</option>${options}`;
+  byId('expense-concert-filter').innerHTML = `<option value="ALL">ВСЕ</option>${options}`;
   if ([...byId('expense-concert-filter').options].some(option => option.value === selected)) byId('expense-concert-filter').value = selected;
 }
 
@@ -1832,7 +1832,7 @@ function renderFinance() {
   byId('expense-list').innerHTML = visible.map(expense => {
     const concert = state.concerts.find(item => item.id === expense.concert_id);
     return `<article class="expense-row"><div><small>${esc(concert ? `${concert.event_name} · ${concert.city}` : 'Концерт не найден')}</small><h3>${esc(expense.description)}</h3><small>${esc(expense.category)} · ${esc(label('expenseType', expense.expense_type))}${expense.expense_type === 'OPTIONAL_FUTURE' && expense.include_in_projected_cost ? ' · ВКЛЮЧЕНО В ПЛАН' : ''}${expense.supplier ? ` · ${esc(expense.supplier)}` : ''}</small></div><strong class="expense-amount">${money(expense.amount, expense.currency)}</strong><div class="expense-meta"><span class="expense-status ${expense.payment_status === 'PAID' ? 'paid' : ''}">${esc(label('paymentStatus', expense.payment_status))}</span><span>${expense.due_date ? `до ${esc(dateLabel(expense.due_date))}` : 'срок не указан'}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-expense="${esc(expense.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-expense="${esc(expense.id)}">УДАЛИТЬ</button></div></article>`;
-  }).join('') || '<div class="empty">За цим фільтром записів немає.</div>';
+  }).join('') || '<div class="empty">По этому фильтру записей нет.</div>';
   byId('f-paid').textContent = currencyTotals(state.expenses.filter(expense => expense.payment_status === 'PAID'));
   byId('f-mandatory').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'MANDATORY_FUTURE' && expense.payment_status !== 'PAID'));
   byId('f-optional').textContent = currencyTotals(state.expenses.filter(expense => expense.expense_type === 'OPTIONAL_FUTURE' && expense.payment_status !== 'PAID'));
@@ -1845,8 +1845,8 @@ async function loadFinance() {
   if (!state.session) {
     ['f-paid', 'f-mandatory', 'f-optional', 'f-deposits'].forEach(id => { byId(id).textContent = '—'; });
     byId('f-optional-note').textContent = 'данные скрыты до входа';
-    byId('expense-list').innerHTML = '<div class="empty">Увійдіть у робочий акаунт, щоб відкрити реєстр витрат.</div>';
-    byId('finance-note').textContent = 'Дані приховані політиками доступу; порожня відповідь не трактується як відсутність витрат.';
+    byId('expense-list').innerHTML = '<div class="empty">Войдите в рабочую учётную запись, чтобы открыть реестр расходов.</div>';
+    byId('finance-note').textContent = 'Данные скрыты правилами доступа; пустой ответ не означает отсутствие расходов.';
     state.expenses = [];
     state.cashBalances = [];
     return;
@@ -1867,7 +1867,7 @@ async function loadFinance() {
   populateConcertOptions();
   renderFinance();
   byId('finance-note').classList.remove('error');
-  byId('finance-note').textContent = 'Факт: PAID. Майбутні обов’язкові, опційні витрати та поворотні застави показані окремо. Валюти не змішуються.';
+  byId('finance-note').textContent = 'Факт: оплаченные расходы. Будущие обязательные, необязательные расходы и возвратные залоги показаны отдельно. Валюты не смешиваются.';
   byId('cash-plan-note').classList.toggle('error', Boolean(cashResult.error));
   byId('cash-plan-note').textContent = cashResult.error ? 'Платёжный календарь ожидает применение миграции 0019_cash_planning.sql.' : 'Платёжный календарь использует внесённые остатки и обязательные расходы со сроком. Продажи билетов не считаются деньгами на счёте, валюты не смешиваются.';
 }
@@ -1903,8 +1903,8 @@ async function saveCashBalance(event) {
 }
 
 function openExpenseForm(expense = null) {
-  if (!requireEditor('Увійдіть через робочу пошту, щоб редагувати витрати.')) return;
-  if (!state.concerts.length) { setStatus('Спочатку додайте концерт до реєстру.', true); return; }
+  if (!requireEditor('Войдите через рабочую почту, чтобы редактировать расходы.')) return;
+  if (!state.concerts.length) { setStatus('Сначала добавьте концерт в реестр.', true); return; }
   const form = byId('expense-form');
   populateConcertOptions();
   form.reset();
@@ -1922,7 +1922,7 @@ function openExpenseForm(expense = null) {
 
 async function saveExpense(event) {
   event.preventDefault();
-  if (!requireEditor('Увійдіть через робочу пошту, щоб зберегти витрату.')) return;
+  if (!requireEditor('Войдите через рабочую почту, чтобы сохранить расход.')) return;
   const form = event.currentTarget;
   const raw = Object.fromEntries(new FormData(form));
   const id = raw.id, existing = state.expenses.find(expense => expense.id === raw.id);
@@ -1936,7 +1936,7 @@ async function saveExpense(event) {
   submit.disabled = false;
   if (result.error) { byId('expense-form-note').textContent = `Помилка: ${result.error.message}`; return; }
   form.hidden = true;
-  setStatus(id ? 'Витрату оновлено у спільній базі' : 'Витрату додано до спільної бази');
+  setStatus(id ? 'Расход обновлён в общей базе' : 'Расход добавлен в общую базу');
   await loadFinance();
 }
 
@@ -1946,7 +1946,7 @@ function bookingValue(id) {
 }
 
 function renderBooking() {
-  byId('booking-list').innerHTML = bookingConcerts.map(concert => `<article class="booking-card"><div class="booking-head"><div><p>${concert.date} · ${concert.city}</p><h2>${concert.title}</h2><small>${concert.venue}</small></div><button class="text-button" type="button" data-clear-booking="${concert.id}">ОЧИСТИТИ</button></div><div class="operators">${bookingOperators.map(([id, name, note]) => `<label class="operator"><b>${name}</b><small>${note}</small><div class="field"><input id="${concert.id}-${id}" inputmode="numeric" pattern="[0-9]*" placeholder="0"><span>квитків</span></div></label>`).join('')}</div><div class="booking-summary"><div><span>ПРОДАНО</span><strong id="${concert.id}-sold">0</strong><small>із ${fmt(concert.capacity)} місць</small></div><div><span>ДО BREAK-EVEN</span><strong id="${concert.id}-break">${fmt(concert.breakEven)}</strong><small>орієнтир ${concert.breakEven}</small></div><div><span>ДО SOLD OUT</span><strong id="${concert.id}-soldout">${fmt(concert.capacity)}</strong><small>повна місткість</small></div></div></article>`).join('');
+  byId('booking-list').innerHTML = bookingConcerts.map(concert => `<article class="booking-card"><div class="booking-head"><div><p>${concert.date} · ${concert.city}</p><h2>${concert.title}</h2><small>${concert.venue}</small></div><button class="text-button" type="button" data-clear-booking="${concert.id}">ОЧИСТИТЬ</button></div><div class="operators">${bookingOperators.map(([id, name, note]) => `<label class="operator"><b>${name}</b><small>${note}</small><div class="field"><input id="${concert.id}-${id}" inputmode="numeric" pattern="[0-9]*" placeholder="0"><span>билетов</span></div></label>`).join('')}</div><div class="booking-summary"><div><span>ПРОДАНО</span><strong id="${concert.id}-sold">0</strong><small>из ${fmt(concert.capacity)} мест</small></div><div><span>ДО БЕЗУБЫТОЧНОСТИ</span><strong id="${concert.id}-break">${fmt(concert.breakEven)}</strong><small>ориентир ${concert.breakEven}</small></div><div><span>ДО ПОЛНОГО ЗАЛА</span><strong id="${concert.id}-soldout">${fmt(concert.capacity)}</strong><small>полная вместимость</small></div></div></article>`).join('');
   document.querySelectorAll('.field input').forEach(input => input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, ''); calculateBooking(); setStatus('Есть несохранённые изменения старой сводки.'); }));
   document.querySelectorAll('[data-clear-booking]').forEach(button => button.addEventListener('click', () => { bookingOperators.forEach(([operator]) => byId(`${button.dataset.clearBooking}-${operator}`).value = ''); calculateBooking(); setStatus('Есть несохранённые изменения старой сводки.'); }));
 }
