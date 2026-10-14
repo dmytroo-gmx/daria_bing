@@ -519,7 +519,7 @@ test('Antonio panel exposes a secret-safe database readiness check', async () =>
     readFile(new URL('../api/ops-health.js', import.meta.url), 'utf8'),
     readFile(new URL('../server/ops-store.js', import.meta.url), 'utf8')
   ]);
-  assert.match(health, /daria_ops_users\?active=eq\.true/);
+  assert.match(health, /daria_ops_users\?telegram_user_id=in\.\(707507251,7803517817\)/);
   assert.match(health, /daria_operational_tasks\?select=/);
   assert.match(health, /daria_concerts\?select=/);
   assert.match(health, /daria_source_documents\?select=id,source_name/);
@@ -527,6 +527,7 @@ test('Antonio panel exposes a secret-safe database readiness check', async () =>
   assert.match(health, /daria_expenses\?select=/);
   assert.match(health, /daria_control_dates\?select=/);
   assert.match(health, /database: 'ready'/);
+  assert.match(health, /roleConfiguration/);
   assert.doesNotMatch(health, /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY/);
   assert.match(store, /databaseCode/);
 });

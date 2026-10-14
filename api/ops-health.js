@@ -5,8 +5,8 @@ module.exports = async function handler(request, response) {
   if (request.method !== 'GET') return response.status(405).json({ ok: false, error: 'method_not_allowed' });
 
   try {
-    await Promise.all([
-      store.select('daria_ops_users?active=eq.true&select=id,name,role,telegram_user_id&order=name.asc&limit=1'),
+    const [roleRows] = await Promise.all([
+      store.select('daria_ops_users?telegram_user_id=in.(707507251,7803517817)&select=telegram_user_id,role,active'),
       store.select('daria_operational_tasks?select=id,title,details,concert_id,task_status,priority,due_date,assignee_ops_user_id,blocked_by_ops_user_id,created_by_ops_user_id,created_at,updated_at&order=due_date.asc.nullslast,created_at.desc&limit=1'),
       store.select('daria_concerts?select=id,event_name,city,event_date,venue,status,risk_status&order=event_date.asc.nullslast&limit=1'),
       store.select('daria_source_documents?select=id,source_name,document_type,source_date,notes,created_at&order=created_at.desc&limit=1'),
@@ -17,7 +17,9 @@ module.exports = async function handler(request, response) {
       store.select('daria_ops_reminder_log?select=id&limit=1')
     ]);
     const reminders = process.env.CRON_SECRET && process.env.TELEGRAM_BOT_TOKEN ? 'ready' : 'not_configured';
-    return response.status(200).json({ ok: true, database: 'ready', reminders, check: 'all_panel_queries' });
+    const roles = new Map(roleRows.map(item => [String(item.telegram_user_id), item.active ? item.role : 'INACTIVE']));
+    const roleConfiguration = roles.get('707507251') === 'OWNER' && roles.get('7803517817') === 'OPERATIONS_ADMIN' ? 'ready' : 'needs_update';
+    return response.status(200).json({ ok: true, database: 'ready', reminders, roleConfiguration, check: 'all_panel_queries' });
   } catch (error) {
     return response.status(503).json({
       ok: false,
