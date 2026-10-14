@@ -139,8 +139,23 @@ function toggleLogin(force) {
 async function sendMagicLink() {
   const email = byId('editor-email').value.trim();
   if (!email) { byId('login-note').textContent = 'Введите рабочую почту.'; return; }
-  const { error } = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin + window.location.pathname } });
-  byId('login-note').textContent = error ? `Не удалось отправить ссылку: ${error.message}` : 'Ссылка отправлена. Откройте её в этом браузере.';
+  const button = byId('send-login');
+  button.disabled = true;
+  byId('login-note').textContent = 'Отправляем ссылку…';
+  try {
+    const response = await fetch('/api/auth-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'Не удалось отправить ссылку.');
+    byId('login-note').textContent = 'Ссылка отправлена. Откройте письмо на этом устройстве.';
+  } catch (error) {
+    byId('login-note').textContent = `Не удалось отправить ссылку: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function updateAccess(session) {

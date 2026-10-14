@@ -15,6 +15,22 @@ test('the product is branded Legacy Brain', () => {
   assert.doesNotMatch(html, /DARIA BING/i);
 });
 
+test('email login uses a same-origin server route for mobile Telegram browsers', async () => {
+  const authApi = await readFile(new URL('../api/auth-link.js', import.meta.url), 'utf8');
+  assert.match(js, /fetch\('\/api\/auth-link'/);
+  assert.doesNotMatch(js, /db\.auth\.signInWithOtp/);
+  for (const email of ['dudodomu@gmail.com', 'decisiongreat1@gmail.com', 'legacyimperialconcerts@gmail.com']) assert.match(authApi, new RegExp(email.replace('.', '\\.')));
+  assert.match(authApi, /REDIRECT_URL = 'https:\/\/daria-bing\.vercel\.app\/'/);
+  assert.doesNotMatch(authApi, /SERVICE_ROLE/);
+});
+
+test('Telegram bot launch opens the dedicated ops panel instead of the email login page', () => {
+  assert.match(html, /telegram-web-app\.js/);
+  assert.match(html, /window\.Telegram\?\.WebApp\?\.initData/);
+  assert.match(html, /window\.location\.replace\(`\/ops\//);
+  assert.doesNotMatch(html, /initDataUnsafe/);
+});
+
 test('static UI labels are localized for Russian operation', () => {
   assert.match(js, /function localizeStaticInterface/);
   assert.match(js, /'WEBSITE': 'САЙТ'/);

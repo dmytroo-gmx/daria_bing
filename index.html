@@ -6,6 +6,12 @@
   <meta name="description" content="Legacy Brain — внутренняя операционная система концертов.">
   <title>Legacy Brain — операции и продажи</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    if (window.Telegram?.WebApp?.initData && !window.location.pathname.startsWith('/ops/')) {
+      window.location.replace(`/ops/${window.location.search}${window.location.hash}`);
+    }
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="shared/regulation.js" defer></script>
   <script src="app.js" defer></script>
