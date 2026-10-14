@@ -2,6 +2,11 @@ const store = require('../server/ops-store');
 const { sendTelegram } = require('../server/telegram-message');
 
 const dateText = value => value ? value.split('-').reverse().join('.') : 'без даты';
+const dateInWarsaw = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
 
 module.exports = async function handler(request, response) {
   response.setHeader('cache-control', 'no-store');
@@ -11,7 +16,7 @@ module.exports = async function handler(request, response) {
   if (!cronSecret || !botToken) return response.status(503).json({ error: 'reminders_not_configured' });
   if (request.headers.authorization !== `Bearer ${cronSecret}`) return response.status(401).json({ error: 'unauthorized' });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateInWarsaw();
   try {
     const [users, tasks, milestones, concerts, sent] = await Promise.all([
       store.select('daria_ops_users?active=eq.true&telegram_user_id=not.is.null&select=id,name,role,telegram_user_id'),

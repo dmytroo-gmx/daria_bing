@@ -24,6 +24,11 @@
   const count = value => Number(value) || 0;
   const currency = value => String(value || 'PLN').toUpperCase();
   const result = (tone, text, details = {}) => ({ tone, text, ...details });
+  const dateInWarsaw = (date = new Date()) => {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+    const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  };
 
   function plannedEconomy(concert, expenses = [], channelPlans = []) {
     const targetCurrency = currency(concert?.currency);
@@ -89,7 +94,7 @@
     const gate = ownMilestones.find(row => row.milestone_type === 'DECISION_GATE' && row.target_date <= (gateDate || ''));
     const sold = count(data.soldTickets);
     const pace = recentSalesPace(snapshots, concert.id);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateInWarsaw();
     const daysToEvent = concert.event_date ? Math.max(0, Math.ceil((new Date(`${concert.event_date}T12:00:00Z`) - new Date(`${today}T12:00:00Z`)) / 86400000)) : 0;
     const projectedTickets = pace.countedOperators && daysToEvent ? Math.min(count(concert.capacity) || Infinity, Math.round(sold + pace.ticketsPerDay * daysToEvent)) : null;
     const projectedResult = projectedTickets != null && count(concert.average_ticket_price) > 0 && !economy.mixedCurrency ? projectedTickets * count(concert.average_ticket_price) - economy.total : null;

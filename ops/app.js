@@ -23,7 +23,36 @@ function jobTitle(user) {
   return user.business_title || 'Команда';
 }
 function showView(view) { document.querySelectorAll('[data-panel]').forEach(item => item.classList.toggle('active', item.dataset.panel === view)); document.querySelectorAll('[data-view]').forEach(item => item.classList.toggle('active', item.dataset.view === view)); if (view === 'tasks') renderTasks(); if (view === 'launch') loadLaunchData(); }
-async function api(url, options = {}) { const response = await fetch(url, { ...options, headers:{ 'content-type':'application/json', authorization:`Bearer ${state.token}`, ...(options.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || 'Ошибка соединения'); return body; }
+function dateInWarsaw(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Warsaw', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+function dateAfterDays(days) { const date = new Date(`${dateInWarsaw()}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
+async function fetchWithTimeout(url, options = {}, timeout = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try { return await fetch(url, { ...options, signal:controller.signal }); }
+  catch (error) { if (error.name === 'AbortError') throw new Error('Сервер не ответил за 15 секунд'); throw error; }
+  finally { clearTimeout(timer); }
+}
+async function authenticateTelegram() {
+  const initData = window.Telegram?.WebApp?.initData;
+  if (!initData) throw new Error('Открой пульт через Telegram-бота Legacy Imperial');
+  const response = await fetchWithTimeout('/api/telegram-auth', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ initData }) });
+  const result = await response.json().catch(() => ({}));
+  if (response.status === 403) { const error = new Error('Доступ ожидает подтверждения'); error.code = 'ACCESS_PENDING'; error.telegramUserId = result.telegramUserId; throw error; }
+  if (!response.ok) throw new Error(result.error || 'Не удалось проверить доступ');
+  state.user = result.user; state.token = result.sessionToken;
+  return result;
+}
+async function api(url, options = {}, canRefresh = true) {
+  const response = await fetchWithTimeout(url, { ...options, headers:{ 'content-type':'application/json', authorization:`Bearer ${state.token}`, ...(options.headers || {}) } });
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && canRefresh) { await authenticateTelegram(); return api(url, options, false); }
+  if (!response.ok) throw new Error(body.error || 'Ошибка соединения');
+  return body;
+}
 
 function taskCard(task, editable = true) {
   const concert = state.concerts.find(item => item.id === task.concert_id);
@@ -32,7 +61,7 @@ function taskCard(task, editable = true) {
 function renderToday() {
   const open = state.tasks.filter(task => !['DONE','CANCELLED'].includes(task.task_status));
   const mine = open.filter(task => task.assignee_ops_user_id === state.user.id || task.blocked_by_ops_user_id === state.user.id);
-  const today = new Date().toISOString().slice(0,10), inThirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10), inFourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0,10);
+  const today = dateInWarsaw(), inThirtyDays = dateAfterDays(30), inFourteenDays = dateAfterDays(14);
   const activeConcerts = state.concerts.filter(item => !['CANCELLED','COMPLETED'].includes(item.status));
   const upcomingAll = activeConcerts.filter(item => item.event_date && item.event_date >= today);
   const upcoming = upcomingAll.slice(0,5);
@@ -146,12 +175,12 @@ async function initialize() {
   if (!webApp?.initData) { $('startup').innerHTML = '<b>Legacy Imperial</b><span>Открой пульт через Telegram-бота Legacy Imperial.</span>'; return; }
   webApp.ready(); webApp.expand();
   try {
-    const response = await fetch('/api/telegram-auth', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ initData:webApp.initData }) });
-    const result = await response.json();
-    if (response.status === 403) { $('startup').hidden = true; $('shell').hidden = false; showView('access'); $('access-message').textContent = `Запрос на доступ создан. Твой Telegram ID: ${result.telegramUserId}. Владелец должен подтвердить его.`; return; }
-    if (!response.ok) throw new Error(result.error || 'Не удалось проверить доступ');
-    state.user = result.user; state.token = result.sessionToken; await loadData(); $('startup').hidden = true; $('shell').hidden = false;
-  } catch(error) { $('startup').innerHTML = `<b>Не удалось открыть пульт</b><span>${escapeHtml(error.message)}</span>`; }
+    await authenticateTelegram();
+    await loadData(); $('startup').hidden = true; $('shell').hidden = false;
+  } catch(error) {
+    if (error.code === 'ACCESS_PENDING') { $('startup').hidden = true; $('shell').hidden = false; showView('access'); $('access-message').textContent = `Запрос на доступ создан. Твой Telegram ID: ${error.telegramUserId}. Владелец должен подтвердить его.`; return; }
+    $('startup').innerHTML = `<b>Не удалось открыть пульт</b><span>${escapeHtml(error.message)}</span>`;
+  }
 }
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));

@@ -32,15 +32,18 @@ test('Telegram bot launch opens the dedicated ops panel instead of the email log
 });
 
 test('static UI labels are localized for Russian operation', () => {
-  assert.match(js, /function localizeStaticInterface/);
-  assert.match(js, /'WEBSITE': 'САЙТ'/);
-  assert.match(js, /'PDF REPORT': 'ОТЧЁТ В ДОКУМЕНТЕ'/);
+  assert.doesNotMatch(js, /MutationObserver/);
+  assert.doesNotMatch(js, /staticRussianLabels|localizeStaticInterface/);
+  assert.match(html, />НОВЫЙ ЗАКАЗ</);
+  assert.match(html, />НОВЫЙ РАСХОД</);
+  assert.match(html, />СОХРАНИТЬ</);
   assert.match(js, /label\('status', status\)/);
   assert.match(js, /documentStatus: \{ NEW: 'НОВОЕ — ТРЕБУЕТ ПРОВЕРКИ'/);
   assert.match(js, /label\('expenseType', expense\.expense_type\)/);
   assert.match(js, /label\('paymentStatus', expense\.payment_status\)/);
   assert.match(js, /label\('negotiationStatus', value\)/);
   assert.match(html, /placeholder="реклама, площадка, артисты…"/);
+  assert.match(html, /@supabase\/supabase-js@2\.117\.3/);
 });
 
 test('concert workspace uses tabbed server-backed detail', () => {
@@ -154,6 +157,10 @@ test('operator CSV import previews rows and excludes existing orders before inse
   assert.match(js, /function prepareOrderImport/);
   assert.match(js, /external_order_id', ids/);
   assert.match(js, /Пропущено повторов/);
+  assert.match(js, /function normaliseImportDate/);
+  assert.match(js, /function normaliseImportStatus/);
+  assert.match(js, /raw\.status === '' \? 'PENDING'/);
+  assert.doesNotMatch(js, /parseCsv\(await file\.text\(\), csvDelimiter\(await file\.text\(\)\)\)/);
 });
 
 test('unauthenticated empty RLS results are not presented as zero', () => {
@@ -206,6 +213,7 @@ test('channels preserve the separation of channels, campaigns and tracking links
   assert.match(js, /db\.from\('daria_csv_imports'\)/);
   assert.match(js, /function generateCampaignSourceCode/);
   assert.match(js, /Такой код источника уже есть/);
+  assert.match(js, /byId\('c-spend'\)\.textContent = currencyTotals/);
 });
 
 test('documents keep PDF evidence and CSV imports separate from operational facts', async () => {
@@ -358,6 +366,12 @@ test('report channel filter scopes headline metrics and concert cards consistent
   assert.match(js, /function latestFallbackOperatorReports\(campaigns, paidOrders, confirmedReports\)/);
   assert.match(js, /fallbackOperatorReports\.reduce\(\(sum, report\) => sum \+ \(Number\(report\.confirmed_tickets\) \|\| 0\), 0\)/);
   assert.match(js, /подтверждённые заказы и итоги операторов/);
+  assert.match(js, /byId\('r-spend'\)\.textContent = currencyTotals/);
+});
+
+test('editing a campaign does not overwrite imported landing-page views', () => {
+  const saveCampaign = js.slice(js.indexOf('async function saveCampaign('), js.indexOf('function openTrackingForm('));
+  assert.doesNotMatch(saveCampaign, /platform_landing_page_views/);
 });
 
 test('campaign results lead to a separate prefilled confirmed order workflow', () => {
@@ -480,11 +494,24 @@ test('Antonio panel is isolated inside Legacy Brain and verifies Telegram server
   assert.match(opsHtml, /События/);
   assert.match(opsHtml, /Документы/);
   assert.match(opsJs, /Telegram\?\.WebApp/);
+  assert.match(opsJs, /response\.status === 401 && canRefresh/);
+  assert.match(opsJs, /async function authenticateTelegram/);
+  assert.match(opsJs, /function fetchWithTimeout/);
+  assert.match(opsJs, /timeZone:'Europe\/Warsaw'/);
   assert.match(telegramApi, /validateTelegramInitData/);
   assert.match(migration, /create table if not exists public\.daria_ops_users/);
   assert.match(migration, /7803517817/);
   assert.match(migration, /707507251/);
   assert.doesNotMatch(migration.toLowerCase(), /drop table|truncate|delete from/);
+});
+
+test('Telegram task writes validate identifiers, dates and active assignees', async () => {
+  const api = await readFile(new URL('../api/ops-data.js', import.meta.url), 'utf8');
+  assert.match(api, /const isUuid/);
+  assert.match(api, /function isDateOnly/);
+  assert.match(api, /assignee_not_active/);
+  assert.match(api, /decision_owner_not_active/);
+  assert.match(api, /concert_not_found/);
 });
 
 test('Antonio panel exposes a secret-safe database readiness check', async () => {
@@ -551,6 +578,14 @@ test('Antonio panel follows Legacy Brain branding and business titles', async ()
   assert.match(migration, /7803517817/);
   assert.match(migration, /707507251/);
   assert.match(migration, /Daria Bing/);
+});
+
+test('Telegram roles preserve equal authority without calling the chief of staff an owner', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/0024_correct_ops_roles.sql', import.meta.url), 'utf8');
+  assert.match(migration, /telegram_user_id = 707507251/);
+  assert.match(migration, /role = 'OWNER'/);
+  assert.match(migration, /telegram_user_id = 7803517817/);
+  assert.match(migration, /role = 'OPERATIONS_ADMIN'/);
 });
 
 test('finance has a conservative 30 and 60 day cash plan', async () => {

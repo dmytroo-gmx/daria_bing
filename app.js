@@ -34,6 +34,16 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&'
 const fmt = value => new Intl.NumberFormat('pl-PL').format(Number(value) || 0);
 const money = (value, currency = 'PLN') => new Intl.NumberFormat('pl-PL', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value) || 0);
 const dateLabel = value => value ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${value}T12:00:00`)) : 'дата не указана';
+const dateInWarsaw = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+const dateAfterDays = days => {
+  const date = new Date(`${dateInWarsaw()}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 const label = (group, value) => labels[group]?.[value] || String(value ?? '—').replaceAll('_', ' ');
 const help = (text, explanation) => `${text} <span class="term-help" tabindex="0" data-tooltip="${esc(explanation)}">?</span>`;
 const auditActorLabel = entry => entry.actor_name || (entry.user_id ? `пользователь ${String(entry.user_id).slice(0, 8)}…` : 'автор не зафиксирован');
@@ -42,61 +52,6 @@ function breakEvenTickets(concert, costs) {
   const averageTicketPrice = Number(concert.average_ticket_price || 0);
   if (averageTicketPrice <= 0) return null;
   return Math.ceil(Math.max(0, Number(costs || 0)) / averageTicketPrice);
-}
-
-const staticRussianLabels = {
-  'УСІ': 'ВСЕ', 'ДОДАТИ': 'ДОБАВИТЬ', 'РЕДАГУВАТИ': 'ИЗМЕНИТЬ', 'ЗБЕРЕГТИ': 'СОХРАНИТЬ', 'ЗАКРИТИ': 'ЗАКРЫТЬ',
-  'НОВИЙ КАНАЛ': 'НОВЫЙ КАНАЛ', 'Додати канал': 'Добавить канал', 'АКТИВНИЙ': 'АКТИВЕН',
-  'НОВЕ ДЖЕРЕЛО': 'НОВЫЙ ИСТОЧНИК', 'Завантажити документ': 'Загрузить документ', 'ЗАВАНТАЖИТИ': 'ЗАГРУЗИТЬ',
-  'НЕ ПРИВ’ЯЗАНО': 'НЕ ПРИВЯЗАНО', 'ДАТА ДЖЕРЕЛА': 'ДАТА ИСТОЧНИКА', 'НОТАТКИ': 'ЗАМЕТКИ',
-  'Активні події': 'Активные события', 'Завантаження операційних даних…': 'Загрузка операционных данных…', 'Метрики завантажуються незалежно: збій одного джерела не маскується нулями.': 'Показатели загружаются независимо: сбой одного источника не подменяется нулями.',
-  'Увійдіть, щоб відкрити задачі.': 'Войдите, чтобы открыть задачи.', 'Реєстр подій': 'Реестр событий', 'ДОДАТИ КОНЦЕРТ': 'ДОБАВИТЬ КОНЦЕРТ', 'Оберіть концерт': 'Выберите концерт', 'Тут з’являться операційні параметри, статус і ризик обраної події.': 'Здесь появятся рабочие параметры, статус и риск выбранного события.',
-  'НОВИЙ КОНЦЕРТ': 'НОВЫЙ КОНЦЕРТ', 'Додати подію': 'Добавить событие', 'ЩОДЕННИЙ ЗРІЗ ПРОДАЖІВ': 'ЕЖЕДНЕВНЫЙ СРЕЗ ПРОДАЖ', 'Додати снапшот': 'Добавить срез', 'ДАТА ЗРІЗУ': 'ДАТА СРЕЗА', 'ПРОДАНО ВСЬОГО': 'ПРОДАНО ВСЕГО', 'ВИРУЧКА ВСЬОГО': 'ВЫРУЧКА ВСЕГО',
-  'ДОКУМЕНТ-ДЖЕРЕЛО': 'ФАЙЛ-ИСТОЧНИК', 'КОМЕНТАР ДО ДЖЕРЕЛА': 'КОММЕНТАРИЙ К ИСТОЧНИКУ', 'Наприклад: сторінка 2 операторського PDF-звіту': 'Например: страница 2 отчёта оператора', 'ЗБЕРЕГТИ ЗРІЗ': 'СОХРАНИТЬ СРЕЗ', 'Не додавай сюди загальні суми різних операторів як один рядок.': 'Не добавляйте сюда общие суммы разных операторов одной строкой.',
-  'Увійдіть, щоб відкрити замовлення.': 'Войдите, чтобы открыть заказы.', 'Довідник': 'Справочник', 'Активність': 'Активность', 'Увійдіть, щоб завантажити канали.': 'Войдите, чтобы загрузить каналы.', 'Увійдіть, щоб завантажити кампанії.': 'Войдите, чтобы загрузить кампании.', 'Увійдіть, щоб відкрити документи.': 'Войдите, чтобы открыть документы.',
-  'Комісії, доступ до даних і CAPI фіксуються як умови договору або підтверджені факти, а не припущення.': 'Комиссии, доступ к данным и серверная передача фиксируются как условия договора или подтверждённые факты, а не предположения.', 'Увійдіть, щоб завантажити операторів.': 'Войдите, чтобы загрузить операторов.', 'Увійдіть, щоб відкрити реєстр витрат.': 'Войдите, чтобы открыть реестр расходов.', 'Увійдіть, щоб побачити звіти.': 'Войдите, чтобы увидеть отчёты.',
-  'PDF REPORT': 'ОТЧЁТ В ДОКУМЕНТЕ', 'META CSV': 'ВЫГРУЗКА META', 'OPERATOR CSV': 'ВЫГРУЗКА ОПЕРАТОРА', 'OTHER CSV': 'ДРУГАЯ ВЫГРУЗКА',
-  'NEW — ПОТРЕБУЄ ПЕРЕВІРКИ': 'НОВОЕ — ТРЕБУЕТ ПРОВЕРКИ', 'REVIEWED': 'ПРОВЕРЕНО', 'APPLIED': 'ПРИМЕНЕНО', 'REJECTED': 'ОТКЛОНЕНО',
-  'WEBSITE': 'САЙТ', 'MARKETPLACE COMMISSION, %': 'КОМИССИЯ МАРКЕТПЛЕЙСА, %', 'OWN SALES COMMISSION, %': 'КОМИССИЯ СОБСТВЕННЫХ ПРОДАЖ, %',
-  'PAYMENT FEE, %': 'КОМИССИЯ ПЛАТЕЖА, %', 'SETUP FEE': 'РАЗОВЫЙ ЗАПУСК', 'MONTHLY FEE': 'ЕЖЕМЕСЯЧНАЯ ПЛАТА', 'CAPI FEE': 'ПЛАТА ЗА СЕРВЕРНУЮ ПЕРЕДАЧУ',
-  'EXCLUSIVITY REQUIRED': 'ЭКСКЛЮЗИВНОСТЬ', 'NEGOTIATION STATUS': 'СТАТУС ПЕРЕГОВОРОВ', 'EXCLUSIVITY TERMS': 'УСЛОВИЯ ЭКСКЛЮЗИВНОСТИ', 'CONTRACT NOTES': 'ЗАМЕТКИ ПО ДОГОВОРУ',
-  'Meta Pixel': 'Пиксель Meta', 'CAPI': 'Серверная передача', 'GTM': 'Диспетчер тегов', 'Statistical links': 'Статистические ссылки', 'Promo codes': 'Промокоды', 'Marketplace': 'Маркетплейс', 'SMS marketing': 'СМС-рассылки', 'Email marketing': 'Рассылки по почте',
-  'break-even': 'точка безубыточности', 'Операційні дані, не фінансова рекомендація': 'Операционные данные, не финансовая рекомендация',
-  'ДОДАТИ ДЖЕРЕЛО': 'ДОБАВИТЬ ИСТОЧНИК', 'ДОДАТИ ЗРІЗ': 'ДОБАВИТЬ СРЕЗ', 'ВІДКРИТИ': 'ОТКРЫТЬ', 'РЕДАГУВАННЯ': 'РЕДАКТИРОВАНИЕ', 'РЕДАГУВАННЯ ЗАДАЧІ': 'РЕДАКТИРОВАНИЕ ЗАДАЧИ', 'НОВА ЗАДАЧА': 'НОВАЯ ЗАДАЧА', 'Додати задачу': 'Добавить задачу', 'РЕДАГУВАННЯ ОПЕРАТОРА': 'РЕДАКТИРОВАНИЕ ОПЕРАТОРА', 'НОВИЙ ОПЕРАТОР': 'НОВЫЙ ОПЕРАТОР', 'Додати оператора': 'Добавить оператора',
-  'РЕДАГУВАННЯ ВИТРАТИ': 'РЕДАКТИРОВАНИЕ РАСХОДА', 'НОВА ВИТРАТА': 'НОВЫЙ РАСХОД', 'Додати запис': 'Добавить запись', 'РЕДАГУВАТИ': 'ИЗМЕНИТЬ', 'ОЧИСТИТИ': 'ОЧИСТИТЬ', 'квитків': 'билетов', 'із': 'из', 'місць': 'мест', 'орієнтир': 'ориентир',
-  'без дати': 'без даты', 'дата джерела не задана': 'дата источника не указана', 'майданчик не задано': 'площадка не указана', 'Концерт не знайдено': 'Концерт не найден', 'строк не задано': 'срок не указан', 'За цим фільтром задач немає.': 'По этому фильтру задач нет.', 'За цим фільтром замовлень немає.': 'По этому фильтру заказов нет.', 'За цим фільтром записів немає.': 'По этому фильтру записей нет.',
-  'Збереження…': 'Сохранение…', 'Помилка:': 'Ошибка:', 'Концерт оновлено у спільній базі': 'Концерт обновлён в общей базе', 'Концерт додано до спільної бази': 'Концерт добавлен в общую базу', 'Замовлення оновлено у спільній базі': 'Заказ обновлён в общей базе', 'Замовлення додано до спільної бази': 'Заказ добавлен в общую базу', 'Кампанію оновлено': 'Кампания обновлена', 'Кампанію додано': 'Кампания добавлена', 'Витрату оновлено у спільній базі': 'Расход обновлён в общей базе', 'Витрату додано до спільної бази': 'Расход добавлен в общую базу', 'Оператора оновлено': 'Оператор обновлён', 'Оператора додано': 'Оператор добавлен',
-  'Спочатку додайте концерт до реєстру.': 'Сначала добавьте концерт в реестр.', 'Спочатку додайте концерт.': 'Сначала добавьте концерт.', 'Спочатку додайте або підтвердьте квиткового оператора.': 'Сначала добавьте или подтвердите билетного оператора.', 'Увійдіть через робочу пошту, щоб': 'Войдите через рабочую почту, чтобы', 'не вдалося': 'не удалось', 'Не вдалося': 'Не удалось', 'оновлено': 'обновлён', 'додано': 'добавлен', 'збережено': 'сохранён', 'Зріз': 'Срез', 'зріз': 'срез', 'джерелом': 'источником', 'джерело': 'источник', 'джерела': 'источника', 'Застосування перевірених даних…': 'Применение проверенных данных…', 'Перевірені дані Meta CSV застосовано до кампанії': 'Проверенные данные Meta CSV применены к кампании',
-  'ALREADY PAID': 'УЖЕ ОПЛАЧЕНО', 'MANDATORY FUTURE': 'ОБЯЗАТЕЛЬНО ОПЛАТИТЬ', 'OPTIONAL FUTURE': 'НЕОБЯЗАТЕЛЬНЫЙ РАСХОД', 'REFUNDABLE DEPOSIT': 'ВОЗВРАТНЫЙ ЗАЛОГ', 'UNPAID': 'НЕ ОПЛАЧЕНО', 'PARTIALLY PAID': 'ОПЛАЧЕНО ЧАСТИЧНО', 'TO_BE_CLARIFIED': 'ТРЕБУЕТ УТОЧНЕНИЯ', 'NEGOTIATING': 'ПЕРЕГОВОРЫ', 'RECOMMENDED': 'РЕКОМЕНДОВАН', 'BACKUP': 'РЕЗЕРВНЫЙ', 'NOT SUITABLE': 'НЕ ПОДХОДИТ', 'PAUSED': 'НА ПАУЗЕ', 'PDF': 'ДОКУМЕНТ', 'CSV': 'ТАБЛИЧНАЯ ВЫГРУЗКА', 'PREVIEW': 'ПРЕДПРОСМОТР'
-};
-
-function translateStaticText(value) {
-  return Object.entries(staticRussianLabels).reduce((result, [from, to]) => result.replaceAll(from, to), String(value ?? ''));
-}
-
-function localizeStaticInterface() {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
-  nodes.forEach(node => { const translated = translateStaticText(node.nodeValue); if (translated !== node.nodeValue) node.nodeValue = translated; });
-  document.querySelectorAll('[data-tooltip],[placeholder]').forEach(element => {
-    if (element.dataset.tooltip) element.dataset.tooltip = translateStaticText(element.dataset.tooltip);
-    if (element.placeholder) element.placeholder = translateStaticText(element.placeholder);
-  });
-  const observer = new MutationObserver(records => records.forEach(record => {
-    if (record.type === 'characterData') { const translated = translateStaticText(record.target.nodeValue); if (translated !== record.target.nodeValue) record.target.nodeValue = translated; }
-    record.addedNodes.forEach(node => {
-      if (node.nodeType === Node.TEXT_NODE) { const translated = translateStaticText(node.nodeValue); if (translated !== node.nodeValue) node.nodeValue = translated; }
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const addedText = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-        while (addedText.nextNode()) { const translated = translateStaticText(addedText.currentNode.nodeValue); if (translated !== addedText.currentNode.nodeValue) addedText.currentNode.nodeValue = translated; }
-        node.querySelectorAll?.('[data-tooltip],[placeholder]').forEach(element => {
-          if (element.dataset.tooltip) element.dataset.tooltip = translateStaticText(element.dataset.tooltip);
-          if (element.placeholder) element.placeholder = translateStaticText(element.placeholder);
-        });
-      }
-    });
-  }));
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 }
 
 function setStatus(message, isError = false) {
@@ -260,14 +215,12 @@ function concertCard(concert, compact = false) {
 }
 
 function dashboardPeriodConcerts(concerts, period = byId('dashboard-period')?.value || 'ALL') {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = dateInWarsaw();
   return concerts.filter(concert => {
     if (!['ON_SALE', 'ACTIVE'].includes(concert.status)) return false;
     if (period === 'ALL' || !concert.event_date) return true;
-    const eventDate = new Date(`${concert.event_date}T12:00:00`);
-    if (period === 'MONTH') return eventDate.getFullYear() === today.getFullYear() && eventDate.getMonth() === today.getMonth();
-    const end = new Date(today); end.setDate(end.getDate() + Number(period));
-    return eventDate >= today && eventDate <= end;
+    if (period === 'MONTH') return concert.event_date.slice(0, 7) === today.slice(0, 7);
+    return concert.event_date >= today && concert.event_date <= dateAfterDays(Number(period));
   });
 }
 
@@ -382,7 +335,7 @@ const milestoneTypeLabels = { SALES_TARGET: 'ЦЕЛЬ ПО ПРОДАЖАМ', MA
 function milestoneSignal(milestone, sold) {
   if (milestone.status === 'DONE') return 'ВЫПОЛНЕНО';
   if (milestone.status === 'CANCELLED') return 'ОТМЕНЕНО';
-  const due = milestone.target_date <= new Date().toISOString().slice(0, 10);
+  const due = milestone.target_date <= dateInWarsaw();
   if (milestone.milestone_type === 'SALES_TARGET') {
     const missing = Math.max(0, Number(milestone.target_tickets || 0) - Number(sold || 0));
     if (!missing) return 'ЦЕЛЬ ДОСТИГНУТА';
@@ -399,7 +352,7 @@ function salesPace(snapshots) {
   groups.forEach(group => {
     const [latest, previous] = [...group].sort((left, right) => String(right.snapshot_date).localeCompare(String(left.snapshot_date)));
     if (!previous || latest.snapshot_date === previous.snapshot_date) return;
-    const days = Math.max(1, Math.round((new Date(`${latest.snapshot_date}T12:00:00`) - new Date(`${previous.snapshot_date}T12:00:00`)) / 86400000));
+    const days = Math.max(1, Math.round((new Date(`${latest.snapshot_date}T12:00:00Z`) - new Date(`${previous.snapshot_date}T12:00:00Z`)) / 86400000));
     const delta = Number(latest.tickets_sold_total || 0) - Number(previous.tickets_sold_total || 0);
     if (delta < 0) corrected = true;
     dailyRate += Math.max(0, delta) / days;
@@ -412,8 +365,8 @@ function milestonePaceSummary(milestone, sold, snapshots) {
   if (milestone.milestone_type !== 'SALES_TARGET' || milestone.status !== 'OPEN') return '';
   const pace = salesPace(snapshots);
   if (!pace.operators) return 'Темп пока не рассчитан: нужны два подтверждённых среза одного оператора.';
-  const today = new Date(); today.setHours(12, 0, 0, 0);
-  const targetDate = new Date(`${milestone.target_date}T12:00:00`);
+  const today = new Date(`${dateInWarsaw()}T12:00:00Z`);
+  const targetDate = new Date(`${milestone.target_date}T12:00:00Z`);
   const days = Math.max(0, Math.ceil((targetDate - today) / 86400000));
   const missing = Math.max(0, Number(milestone.target_tickets || 0) - Number(sold || 0));
   const required = days ? missing / days : null;
@@ -546,7 +499,7 @@ function openConcertForm(concert = null) {
   const form = byId('concert-form');
   form.reset();
   form.hidden = false;
-  byId('form-mode').textContent = concert ? 'РЕДАГУВАННЯ' : 'НОВИЙ КОНЦЕРТ';
+  byId('form-mode').textContent = concert ? 'РЕДАКТИРОВАНИЕ' : 'НОВЫЙ КОНЦЕРТ';
   byId('form-title').textContent = concert ? concert.event_name : 'Добавить событие';
   byId('concert-form-note').textContent = '';
   form.elements.id.value = concert?.id || '';
@@ -563,10 +516,10 @@ async function saveConcert(event) {
   const { id, payload } = concertPayload(form);
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
-  byId('concert-form-note').textContent = 'Збереження…';
+  byId('concert-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_concerts').update(payload).eq('id', id) : await db.from('daria_concerts').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('concert-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  if (result.error) { byId('concert-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
   form.hidden = true;
   setStatus(id ? 'Концерт обновлён в общей базе' : 'Концерт добавлен в общую базу');
   await loadOperations();
@@ -581,13 +534,13 @@ async function openSnapshotForm(concert) {
   }
   await loadDocumentsModule();
   const documents = state.documents.filter(document => !document.concert_id || document.concert_id === concert.id);
-  if (!documents.length) { setStatus('Спочатку завантажте PDF або CSV-джерело для цього концерту.', true); showView('documents'); return; }
+  if (!documents.length) { setStatus('Сначала загрузите документ или табличную выгрузку для этого концерта.', true); showView('documents'); return; }
   if (!state.operators.length) { setStatus('Сначала добавьте или подтвердите билетного оператора.', true); showView('operators'); return; }
   const form = byId('snapshot-form'); form.reset(); form.hidden = false;
   byId('snapshot-form-title').textContent = `Срез · ${concert.event_name}`;
-  byId('snapshot-form-note').textContent = ''; form.elements.concert_id.value = concert.id; form.elements.currency.value = concert.currency || 'PLN'; form.elements.snapshot_date.value = new Date().toISOString().slice(0, 10);
+  byId('snapshot-form-note').textContent = ''; form.elements.concert_id.value = concert.id; form.elements.currency.value = concert.currency || 'PLN'; form.elements.snapshot_date.value = dateInWarsaw();
   setSelectOptions('snapshot-operator', state.operators.map(operator => `<option value="${esc(operator.id)}">${esc(operator.name)}</option>`).join(''));
-  setSelectOptions('snapshot-source-document', documents.map(document => `<option value="${esc(document.id)}">${esc(document.source_name)} · ${esc(document.source_date || 'без дати')}</option>`).join(''));
+  setSelectOptions('snapshot-source-document', documents.map(document => `<option value="${esc(document.id)}">${esc(document.source_name)} · ${esc(document.source_date || 'без даты')}</option>`).join(''));
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -668,7 +621,7 @@ function renderTasks() {
   const filter = byId('task-status-filter').value;
   const person = byId('task-person-filter').value;
   const tasks = state.tasks.filter(task => (filter === 'ALL' || (filter === 'OPEN' ? taskIsOpen(task) : task.task_status === filter)) && (person === 'ALL' || (person === 'UNASSIGNED' ? !task.assignee_ops_user_id : task.assignee_ops_user_id === person)));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateInWarsaw();
   byId('task-list').innerHTML = tasks.map(task => {
     const concert = state.concerts.find(item => item.id === task.concert_id);
     const overdue = taskIsOpen(task) && task.due_date && task.due_date < today;
@@ -719,11 +672,11 @@ async function saveTask(event) {
   if (raw.task_status === 'WAITING_FOR_DECISION' && !raw.blocked_by_ops_user_id) { byId('task-form-note').textContent = 'Укажите, чьего решения ждёт задача.'; return; }
   const payload = { concert_id: raw.concert_id || null, title: raw.title.trim(), details: raw.details.trim(), task_status: raw.task_status, priority: raw.priority, due_date: raw.due_date || null, assignee_ops_user_id: raw.assignee_ops_user_id || null, blocked_by_ops_user_id: raw.task_status === 'WAITING_FOR_DECISION' ? raw.blocked_by_ops_user_id : null, completed_at: raw.task_status === 'DONE' ? existing?.completed_at || new Date().toISOString() : null, updated_at: new Date().toISOString() };
   if (!raw.id) payload.created_by = state.session.user.id;
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('task-form-note').textContent = 'Збереження…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('task-form-note').textContent = 'Сохранение…';
   const result = raw.id ? await db.from('daria_operational_tasks').update(payload).eq('id', raw.id) : await db.from('daria_operational_tasks').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('task-form-note').textContent = `Задачу не збережено: ${result.error.message}`; return; }
-  form.hidden = true; setStatus(raw.id ? 'Задачу оновлено' : 'Задачу додано'); await loadTasksModule();
+  if (result.error) { byId('task-form-note').textContent = `Задача не сохранена: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(raw.id ? 'Задача обновлена' : 'Задача добавлена'); await loadTasksModule();
 }
 
 async function updateConcertStatus(id, nextStatus) {
@@ -861,8 +814,8 @@ async function loadOperations() {
     const previous = latestSnapshots.get(snapshot.concert_id);
     if (!previous || String(snapshot.snapshot_date) > String(previous)) latestSnapshots.set(snapshot.concert_id, snapshot.snapshot_date);
   });
-  const freshCutoff = new Date(); freshCutoff.setHours(0, 0, 0, 0); freshCutoff.setDate(freshCutoff.getDate() - 2);
-  const staleSnapshots = dashboardConcerts.filter(concert => !latestSnapshots.get(concert.id) || new Date(`${latestSnapshots.get(concert.id)}T12:00:00`) < freshCutoff);
+  const freshCutoff = dateAfterDays(-2);
+  const staleSnapshots = dashboardConcerts.filter(concert => !latestSnapshots.get(concert.id) || latestSnapshots.get(concert.id) < freshCutoff);
   const concertSources = new Set((documentsResult.data || []).map(document => document.concert_id).filter(Boolean));
   const sourceMissing = dashboardConcerts.filter(concert => !concertSources.has(concert.id));
   byId('m-stale').textContent = snapshotsResult.error ? '!' : fmt(staleSnapshots.length);
@@ -928,7 +881,7 @@ async function loadSalesModule() {
   ]);
   const errors = [ordersResult.error && `orders: ${ordersResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`].filter(Boolean);
   if (errors.length) {
-    byId('order-list').innerHTML = `<div class="empty">Не вдалося завантажити sales: ${esc(errors.join(' · '))}</div>`;
+    byId('order-list').innerHTML = `<div class="empty">Не удалось загрузить продажи: ${esc(errors.join(' · '))}</div>`;
     byId('sales-note').classList.add('error');
     return;
   }
@@ -959,8 +912,8 @@ function openOrderForm(order = null) {
   populateOrderOptions();
   form.reset();
   form.hidden = false;
-  byId('order-form-mode').textContent = order ? 'РЕДАГУВАННЯ ЗАМОВЛЕННЯ' : 'НОВЕ ЗАМОВЛЕННЯ';
-  byId('order-form-title').textContent = order ? order.external_order_id : 'Додати результат';
+  byId('order-form-mode').textContent = order ? 'РЕДАКТИРОВАНИЕ ЗАКАЗА' : 'НОВЫЙ ЗАКАЗ';
+  byId('order-form-title').textContent = order ? order.external_order_id : 'Добавить результат';
   byId('order-form-note').textContent = '';
   form.elements.id.value = order?.id || '';
   const fields = ['concert_id', 'operator_id', 'campaign_id', 'external_order_id', 'ticket_count', 'gross_revenue', 'net_revenue', 'currency', 'source_code', 'attribution_type', 'promo_code', 'status', 'notes'];
@@ -982,10 +935,10 @@ async function saveOrder(event) {
   const payload = { concert_id: raw.concert_id, operator_id: raw.operator_id || null, campaign_id: raw.campaign_id || null, external_order_id: raw.external_order_id.trim(), order_date: raw.order_date ? new Date(raw.order_date).toISOString() : null, ticket_count: Number(raw.ticket_count), gross_revenue: Number(raw.gross_revenue), net_revenue: numberOrNull(raw.net_revenue), currency: raw.currency.trim().toUpperCase() || 'PLN', source_code: raw.source_code.trim() || null, attribution_type: raw.attribution_type, promo_code: raw.promo_code.trim() || null, status: raw.status, notes: raw.notes.trim() };
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
-  byId('order-form-note').textContent = 'Збереження…';
+  byId('order-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_orders').update(payload).eq('id', id) : await db.from('daria_orders').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('order-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  if (result.error) { byId('order-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
   form.hidden = true;
   setStatus(id ? 'Заказ обновлён в общей базе' : 'Заказ добавлен в общую базу');
   await Promise.all([loadSalesModule(), loadOperations()]);
@@ -994,7 +947,17 @@ async function saveOrder(event) {
 const documentBucket = 'legacy-brain-source-documents';
 const documentTypeLabels = { PDF_REPORT: 'ОТЧЁТ ДОКУМЕНТОМ', META_CSV: 'ВЫГРУЗКА РЕКЛАМЫ', OPERATOR_CSV: 'ВЫГРУЗКА ОПЕРАТОРА', OTHER_CSV: 'ДРУГАЯ ВЫГРУЗКА' };
 let metaSourceRows = [];
-const importNumber = value => Number(String(value ?? '').replace(/\s/g, '').replace(',', '.').replace(/[^0-9.-]/g, '')) || 0;
+function parseLocaleNumber(value) {
+  let text = String(value ?? '').replace(/[\s\u00a0]/g, '').replace(/[^0-9,.-]/g, '');
+  const comma = text.lastIndexOf(','), dot = text.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    if (comma > dot) text = text.replaceAll('.', '').replace(',', '.');
+    else text = text.replaceAll(',', '');
+  } else if (comma >= 0) text = text.replace(',', '.');
+  const number = Number(text);
+  return Number.isFinite(number) ? number : 0;
+}
+const importNumber = parseLocaleNumber;
 function metaRowsFromCsv(text) {
   const rows = parseCsv(text, csvDelimiter(text)); if (rows.length < 2) return [];
   const headers = rows[0], column = phrase => headers.findIndex(header => header.toLowerCase().includes(phrase));
@@ -1020,8 +983,8 @@ function renderDocuments() {
   byId('d-applied').textContent = fmt(documents.filter(document => document.import_status === 'APPLIED').length);
   byId('document-list').innerHTML = documents.map(document => {
     const concert = state.concerts.find(item => item.id === document.concert_id);
-    const preview = document.document_type === 'PDF_REPORT' ? '' : `<button class="text-button" type="button" data-preview-csv="${esc(document.id)}">ПЕРЕГЛЯД CSV</button>`;
-    const apply = document.document_type === 'META_CSV' ? `<button class="text-button" type="button" data-apply-meta="${esc(document.id)}">ЗАСТОСУВАТИ META</button>` : '';
+    const preview = document.document_type === 'PDF_REPORT' ? '' : `<button class="text-button" type="button" data-preview-csv="${esc(document.id)}">ПРОСМОТРЕТЬ ТАБЛИЦУ</button>`;
+    const apply = document.document_type === 'META_CSV' ? `<button class="text-button" type="button" data-apply-meta="${esc(document.id)}">ПРИМЕНИТЬ ДАННЫЕ META</button>` : '';
     return `<article class="expense-row"><div><small>${esc(documentTypeLabels[document.document_type] || document.document_type)} · ${esc(label('documentStatus', document.import_status))}</small><h3>${esc(document.source_name)}</h3><small>${esc(concert?.event_name || 'не привязано к концерту')} · ${esc(document.source_date || 'дата источника не указана')}</small></div><div class="expense-meta"><span>${esc(document.notes || 'без заметки')}</span><span>${document.created_at ? new Date(document.created_at).toLocaleString('ru-RU') : ''}</span></div><div class="document-actions">${preview}${apply}<button class="text-button" type="button" data-open-document="${esc(document.id)}">ОТКРЫТЬ</button><button class="text-button danger" type="button" data-delete-document="${esc(document.id)}">УДАЛИТЬ</button></div></article>`;
   }).join('') || '<div class="empty">Документов ещё нет.</div>';
 }
@@ -1036,7 +999,7 @@ async function loadDocumentsModule() {
   }
   if (!state.concerts.length) await loadOperations();
   const { data, error } = await db.from('daria_source_documents').select('*').order('source_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
-  if (error) { byId('documents-note').classList.add('error'); byId('documents-note').textContent = `Документи не завантажено: ${error.message}`; return; }
+  if (error) { byId('documents-note').classList.add('error'); byId('documents-note').textContent = `Документы не загружены: ${error.message}`; return; }
   state.documents = data || [];
   renderDocuments();
   byId('documents-note').classList.remove('error');
@@ -1057,20 +1020,20 @@ async function saveDocument(event) {
   if (!requireEditor('Войдите через рабочую почту, чтобы загрузить документ.')) return;
   const form = event.currentTarget, file = form.elements.file.files[0];
   const allowed = ['application/pdf', 'text/csv', 'application/csv'];
-  if (!file || (!allowed.includes(file.type) && !/\.(pdf|csv)$/i.test(file.name))) { byId('document-form-note').textContent = 'Додайте PDF або CSV файл.'; return; }
+  if (!file || (!allowed.includes(file.type) && !/\.(pdf|csv)$/i.test(file.name))) { byId('document-form-note').textContent = 'Добавьте документ PDF или таблицу CSV.'; return; }
   if (file.size > 20971520) { byId('document-form-note').textContent = 'Максимальный размер файла — 20 МБ.'; return; }
   const raw = Object.fromEntries(new FormData(form));
   const extension = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'csv';
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120);
   const storagePath = `${state.session.user.id}/${Date.now()}-${safeName || `source.${extension}`}`;
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('document-form-note').textContent = 'Завантаження файлу…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('document-form-note').textContent = 'Загрузка файла…';
   const upload = await db.storage.from(documentBucket).upload(storagePath, file, { contentType: file.type || (extension === 'pdf' ? 'application/pdf' : 'text/csv'), upsert: false });
-  if (upload.error) { submit.disabled = false; byId('document-form-note').textContent = `Файл не завантажено: ${upload.error.message}`; return; }
+  if (upload.error) { submit.disabled = false; byId('document-form-note').textContent = `Файл не загружен: ${upload.error.message}`; return; }
   const payload = { concert_id: raw.concert_id || null, document_type: raw.document_type, source_name: file.name, storage_path: storagePath, mime_type: file.type || (extension === 'pdf' ? 'application/pdf' : 'text/csv'), source_date: raw.source_date || null, import_status: raw.import_status, notes: raw.notes.trim(), uploaded_by: state.session.user.id };
   const result = await db.from('daria_source_documents').insert(payload);
   submit.disabled = false;
-  if (result.error) { await db.storage.from(documentBucket).remove([storagePath]); byId('document-form-note').textContent = `Опис документа не збережено: ${result.error.message}`; return; }
-  form.hidden = true; setStatus('Джерело збережено у Legacy Brain'); await loadDocumentsModule();
+  if (result.error) { await db.storage.from(documentBucket).remove([storagePath]); byId('document-form-note').textContent = `Описание документа не сохранено: ${result.error.message}`; return; }
+  form.hidden = true; setStatus('Источник сохранён в Legacy Brain'); await loadDocumentsModule();
 }
 
 async function openDocument(id) {
@@ -1115,7 +1078,37 @@ function openOrderImport() {
   form.querySelectorAll('.import-column').forEach(select => { select.innerHTML = '<option value="">СНАЧАЛА ВЫБЕРИТЕ ФАЙЛ</option>'; });
   byId('order-import-preview').textContent = 'Выберите файл. До подтверждения ни один заказ не будет добавлен.'; byId('confirm-order-import').disabled = true;
 }
-function numberFromImport(value) { return Number(String(value ?? '').replace(/\s/g, '').replace(',', '.').replace(/[^0-9.-]/g, '')); }
+function numberFromImport(value) { return parseLocaleNumber(value); }
+function normaliseImportDate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const calendarDate = (year, month, day) => {
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12));
+    if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
+    return date.toISOString();
+  };
+  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) return calendarDate(isoDate[1], isoDate[2], isoDate[3]);
+  const localDate = text.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+  if (localDate) {
+    const [, day, month, year] = localDate;
+    return calendarDate(year, month, day);
+  }
+  if (/^\d{4,5}(?:[.,]\d+)?$/.test(text)) {
+    const serial = Number(text.replace(',', '.'));
+    const date = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+function normaliseImportStatus(value) {
+  const status = String(value ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('Ł', 'L');
+  if (/REFUND|ZWROT|ZWR|ВОЗВРАТ/.test(status)) return 'REFUNDED';
+  if (/CANCEL|ANUL|ОТМЕН/.test(status)) return 'CANCELLED';
+  if (/PAID|OPLAC|ОПЛАЧ/.test(status)) return 'PAID';
+  return 'PENDING';
+}
 function prepareOrderImport() {
   const form = byId('order-import-form'); if (!orderImport) return;
   const fields = Object.fromEntries(new FormData(form)); const required = ['external_order_id', 'ticket_count', 'gross_revenue'];
@@ -1123,13 +1116,15 @@ function prepareOrderImport() {
   const rows = orderImport.rows.slice(1).map((row, index) => ({ row, index: index + 2 })).filter(item => item.row.some(Boolean));
   const invalid = rows.filter(item => !item.row[fields.external_order_id] || !(numberFromImport(item.row[fields.ticket_count]) > 0) || !(numberFromImport(item.row[fields.gross_revenue]) >= 0));
   const valid = rows.length - invalid.length;
-  byId('order-import-preview').innerHTML = `<p><b>Проверка файла:</b> ${fmt(rows.length)} строк. Готово к проверке: ${fmt(valid)}. Ошибок формата: ${fmt(invalid.length)}.</p><p>Перед записью система отдельно проверит дубли у выбранного оператора. Строки с ошибками не будут импортированы.</p>`;
+  const statusWarning = fields.status === '' ? ' Столбец статуса не выбран: такие строки будут внесены как «ожидает оплаты», а не как подтверждённая продажа.' : '';
+  byId('order-import-preview').innerHTML = `<p><b>Проверка файла:</b> ${fmt(rows.length)} строк. Готово к проверке: ${fmt(valid)}. Ошибок формата: ${fmt(invalid.length)}.</p><p>Перед записью система отдельно проверит дубли у выбранного оператора. Строки с ошибками не будут импортированы.${statusWarning}</p>`;
   byId('confirm-order-import').disabled = valid === 0;
 }
 async function readOrderImportFile(event) {
   const file = event.target.files[0]; if (!file) return;
   if (!/\.csv$/i.test(file.name)) { byId('order-import-preview').textContent = 'Нужна табличная выгрузка в формате CSV.'; return; }
-  const rows = parseCsv(await file.text(), csvDelimiter(await file.text()));
+  const text = await file.text();
+  const rows = parseCsv(text, csvDelimiter(text));
   if (rows.length < 2) { byId('order-import-preview').textContent = 'В файле нет строк для импорта.'; return; }
   orderImport = { rows, headers: rows[0] };
   byId('order-import-form').querySelectorAll('.import-column').forEach(select => {
@@ -1140,7 +1135,7 @@ async function readOrderImportFile(event) {
 async function saveOrderImport(event) {
   event.preventDefault(); if (!requireEditor('Войдите через рабочую почту, чтобы подтвердить импорт.')) return; if (!orderImport) return;
   const form = event.currentTarget, raw = Object.fromEntries(new FormData(form)); prepareOrderImport(); if (byId('confirm-order-import').disabled) return;
-  const rows = orderImport.rows.slice(1).map(row => ({ external_order_id: String(row[raw.external_order_id] || '').trim(), ticket_count: numberFromImport(row[raw.ticket_count]), gross_revenue: numberFromImport(row[raw.gross_revenue]), order_date: raw.order_date === '' ? null : row[raw.order_date] || null, status: raw.status === '' ? 'PAID' : (String(row[raw.status] || 'PAID').trim().toUpperCase() === 'REFUNDED' ? 'REFUNDED' : 'PAID') })).filter(item => item.external_order_id && item.ticket_count > 0 && item.gross_revenue >= 0);
+  const rows = orderImport.rows.slice(1).map(row => ({ external_order_id: String(row[raw.external_order_id] || '').trim(), ticket_count: numberFromImport(row[raw.ticket_count]), gross_revenue: numberFromImport(row[raw.gross_revenue]), order_date: raw.order_date === '' ? null : normaliseImportDate(row[raw.order_date]), status: raw.status === '' ? 'PENDING' : normaliseImportStatus(row[raw.status]) })).filter(item => item.external_order_id && item.ticket_count > 0 && item.gross_revenue >= 0);
   const ids = [...new Set(rows.map(item => item.external_order_id))]; const { data: existing, error } = await db.from('daria_orders').select('external_order_id').eq('operator_id', raw.operator_id).in('external_order_id', ids);
   if (error) { byId('order-import-note').textContent = `Не удалось проверить дубли: ${error.message}`; return; }
   const duplicates = new Set((existing || []).map(item => item.external_order_id)), seen = new Set(); const fresh = rows.filter(item => { if (duplicates.has(item.external_order_id) || seen.has(item.external_order_id)) return false; seen.add(item.external_order_id); return true; }).map(item => ({ ...item, concert_id: raw.concert_id, operator_id: raw.operator_id, currency: raw.currency, attribution_type: 'UNKNOWN', notes: 'Импорт из CSV после проверки' }));
@@ -1154,11 +1149,11 @@ async function saveOrderImport(event) {
 async function previewCsvDocument(id) {
   const document = state.documents.find(item => item.id === id), preview = byId('csv-preview');
   if (!document) return;
-  preview.hidden = false; preview.textContent = 'Завантаження preview…';
+  preview.hidden = false; preview.textContent = 'Загрузка предварительного просмотра…';
   const { data, error } = await db.storage.from(documentBucket).createSignedUrl(document.storage_path, 300);
   if (error) { preview.textContent = `Таблица не открыта: ${error.message}`; preview.classList.add('error'); return; }
   const response = await fetch(data.signedUrl, { cache: 'no-store' });
-  if (!response.ok) { preview.textContent = `CSV не завантажено: HTTP ${response.status}`; preview.classList.add('error'); return; }
+  if (!response.ok) { preview.textContent = `Таблица CSV не загружена: HTTP ${response.status}`; preview.classList.add('error'); return; }
   const csvText = await response.text();
   const rows = parseCsv(csvText, csvDelimiter(csvText));
   if (!rows.length) { preview.textContent = 'Таблица пуста или не содержит читаемых строк.'; preview.classList.add('error'); return; }
@@ -1252,7 +1247,8 @@ function renderChannels() {
     return `<article class="expense-row"><div><small>${esc(label('linkStatus', link.status))} · ${esc(channel?.name || 'канал не указан')} · ${esc(campaign?.campaign_name || 'кампания не указана')}</small><h3>${esc(link.source_code)}</h3><small>${esc(link.destination_url || link.statistical_url || 'адрес не указан')}</small></div><strong class="expense-amount">${esc(link.utm_source || '—')} / ${esc(link.utm_medium || '—')}</strong><div class="expense-meta"><span>${esc(link.promo_code || 'без промокода')}</span><span>${link.utm_campaign ? `метка: ${esc(link.utm_campaign)}` : 'метка кампании не указана'}</span></div><div class="document-actions"><button class="text-button" type="button" data-edit-link="${esc(link.id)}">ИЗМЕНИТЬ</button><button class="text-button danger" type="button" data-delete-link="${esc(link.id)}">УДАЛИТЬ</button></div></article>`;
   }).join('') || '<div class="empty">Ссылок для учёта ещё нет.</div>';
   byId('c-active').textContent = state.campaigns.filter(campaign => ['TESTING', 'WORKING'].includes(campaign.status)).length;
-  byId('c-spend').textContent = money(state.campaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  const currencyByConcert = new Map(state.concerts.map(concert => [concert.id, concert.currency || 'PLN']));
+  byId('c-spend').textContent = currencyTotals(state.campaigns.map(campaign => ({ amount: campaign.actual_spend, currency: currencyByConcert.get(campaign.concert_id) || 'PLN' })));
   byId('c-platform-orders').textContent = fmt(state.campaigns.reduce((sum, campaign) => sum + (Number(campaign.platform_reported_orders) || 0), 0));
   byId('c-active-links').textContent = state.trackingLinks.filter(link => link.status === 'ACTIVE').length;
 }
@@ -1280,7 +1276,7 @@ async function loadChannelsModule() {
   const errors = [channelsResult.error && `channels: ${channelsResult.error.message}`, campaignsResult.error && `campaigns: ${campaignsResult.error.message}`, linksResult.error && `links: ${linksResult.error.message}`, operatorsResult.error && `operators: ${operatorsResult.error.message}`, importsResult.error && `Meta imports: ${importsResult.error.message}`, ordersResult.error && `orders: ${ordersResult.error.message}`].filter(Boolean);
   if (errors.length) {
     byId('channels-note').classList.add('error');
-    byId('channels-note').textContent = `Частину даних не завантажено: ${errors.join(' · ')}`;
+    byId('channels-note').textContent = `Часть данных не загружена: ${errors.join(' · ')}`;
     return;
   }
   state.channels = channelsResult.data || [];
@@ -1363,7 +1359,7 @@ async function openCampaignConfirmedReportForm() {
   const documents = documentsResult.data || [];
   if (!documents.length) { setStatus('Сначала загрузите PDF или CSV-отчёт оператора: общий итог без документа-источника не сохраняется.', true); showView('documents'); return; }
   const form = byId('campaign-confirmed-report-form'); form.reset(); form.hidden = false;
-  form.elements.campaign_id.value = campaign.id; form.elements.reported_on.value = new Date().toISOString().slice(0, 10); form.elements.currency.value = state.concerts.find(item => item.id === campaign.concert_id)?.currency || 'PLN';
+  form.elements.campaign_id.value = campaign.id; form.elements.reported_on.value = dateInWarsaw(); form.elements.currency.value = state.concerts.find(item => item.id === campaign.concert_id)?.currency || 'PLN';
   byId('campaign-confirmed-report-campaign-name').value = `${campaign.source_code} · ${campaign.campaign_name}`;
   setSelectOptions('campaign-confirmed-report-source', documents.map(document => `<option value="${esc(document.id)}">${esc(document.source_name)} · ${esc(document.source_date || 'дата не указана')}</option>`).join(''));
   byId('campaign-confirmed-report-note').textContent = ''; form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1402,7 +1398,7 @@ async function openUnattributedOperatorReportForm() {
   const form = byId('unattributed-operator-report-form'); form.reset(); form.hidden = false;
   setSelectOptions('unattributed-report-concert', state.concerts.map(concert => `<option value="${esc(concert.id)}">${esc(concert.event_name)} · ${esc(concert.city)}</option>`).join(''));
   setSelectOptions('unattributed-report-operator', state.operators.map(operator => `<option value="${esc(operator.id)}">${esc(operator.name)}</option>`).join(''));
-  form.elements.reported_on.value = new Date().toISOString().slice(0, 10);
+  form.elements.reported_on.value = dateInWarsaw();
   form.elements.currency.value = state.concerts.find(concert => concert.id === form.elements.concert_id.value)?.currency || 'PLN';
   byId('unattributed-operator-report-note').textContent = '';
   form.elements.concert_id.onchange = async () => {
@@ -1459,7 +1455,7 @@ async function saveCampaign(event) {
   const code = raw.source_code.trim().toUpperCase();
   if (!/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(code)) { byId('campaign-form-note').textContent = 'Код источника должен состоять из латинских букв, цифр и подчёркиваний.'; return; }
   if (state.campaigns.some(item => item.source_code === code && item.id !== raw.id)) { byId('campaign-form-note').textContent = 'Такой код источника уже есть у другой кампании.'; return; }
-  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: code, planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_impressions: numberOrNull(raw.platform_impressions), platform_reach: numberOrNull(raw.platform_reach), platform_link_clicks: numberOrNull(raw.platform_link_clicks), platform_landing_page_views: numberOrNull(raw.entries), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
+  const id = raw.id, payload = { concert_id: raw.concert_id, channel_id: raw.channel_id, campaign_name: raw.campaign_name.trim(), source_code: code, planned_budget: Number(raw.planned_budget || 0), actual_spend: Number(raw.actual_spend || 0), start_date: raw.start_date || null, end_date: raw.end_date || null, status: raw.status, attribution_quality: raw.attribution_quality, entries: numberOrNull(raw.entries), platform_impressions: numberOrNull(raw.platform_impressions), platform_reach: numberOrNull(raw.platform_reach), platform_link_clicks: numberOrNull(raw.platform_link_clicks), platform_reported_orders: numberOrNull(raw.platform_reported_orders), platform_reported_value: numberOrNull(raw.platform_reported_value), notes: raw.notes.trim(), updated_at: new Date().toISOString() };
   const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('campaign-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_campaigns').update(payload).eq('id', id) : await db.from('daria_campaigns').insert(payload);
   submit.disabled = false;
@@ -1557,11 +1553,11 @@ async function saveOperator(event) {
   textFields.forEach(field => { payload[field] = raw[field]?.trim() || (['contract_notes', 'notes'].includes(field) ? '' : null); });
   payload.last_offer_date = raw.last_offer_date || null;
   flags.forEach(flag => { payload[flag] = form.elements[flag].checked; });
-  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('operator-form-note').textContent = 'Збереження…';
+  const submit = form.querySelector('[type="submit"]'); submit.disabled = true; byId('operator-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_ticketing_operators').update(payload).eq('id', id) : await db.from('daria_ticketing_operators').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('operator-form-note').textContent = `Помилка: ${result.error.message}`; return; }
-  form.hidden = true; setStatus(id ? 'Оператора оновлено' : 'Оператора додано'); await Promise.all([loadOperatorsModule(), loadChannelsModule(), loadSalesModule()]);
+  if (result.error) { byId('operator-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
+  form.hidden = true; setStatus(id ? 'Оператор обновлён' : 'Оператор добавлен'); await Promise.all([loadOperatorsModule(), loadChannelsModule(), loadSalesModule()]);
 }
 
 function ratio(numerator, denominator, suffix = '') {
@@ -1627,12 +1623,12 @@ function reportSignals(snapshot) {
   if (['RED', 'YELLOW'].includes(concert.risk_status)) signals.push({ level: concert.risk_status === 'RED' ? 'high' : 'normal', text: `Риск отмечен как «${label('risk', concert.risk_status)}». Проверьте причину и следующее действие.` });
   if (missing.length) signals.push({ level: 'normal', text: `Не заполнено: ${missing.join(', ')}.` });
   if (capacity && breakEven && breakEven > capacity) signals.push({ level: 'high', text: `Точка безубыточности ${fmt(breakEven)} билетов выше вместимости ${fmt(capacity)}.` });
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const eventDate = concert.event_date ? new Date(`${concert.event_date}T12:00:00`) : null;
+  const today = new Date(`${dateInWarsaw()}T12:00:00Z`);
+  const eventDate = concert.event_date ? new Date(`${concert.event_date}T12:00:00Z`) : null;
   const daysToEvent = eventDate ? Math.ceil((eventDate - today) / 86400000) : null;
   if (daysToEvent != null && daysToEvent >= 0 && daysToEvent <= 30 && breakEven && paidTickets < breakEven) signals.push({ level: 'high', text: `До концерта ${daysToEvent} дн.; до точки безубыточности не хватает ${fmt(breakEven - paidTickets)} билетов. Решение принимает команда.` });
   if (unattributedTickets > 0) signals.push({ level: 'normal', text: `${fmt(unattributedTickets)} оплаченных билетов пока без установленного источника.` });
-  const overdue = mandatory.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10));
+  const overdue = mandatory.filter(item => item.due_date && item.due_date < dateInWarsaw());
   if (overdue.length) signals.push({ level: 'high', text: `Просрочено обязательных платежей: ${overdue.length} · ${currencyTotals(overdue)}.` });
   return signals;
 }
@@ -1653,7 +1649,7 @@ function exportReportCsv() {
   const rows = state.reportRows.map(row => [row.concert.event_name, row.concert.city, row.concert.event_date || '', label('status', row.concert.status), label('risk', row.concert.risk_status), row.currency, row.capacity || '', row.paidTickets, row.fillShare == null ? '' : (row.fillShare * 100).toFixed(1), row.breakEven || '', row.breakEven == null ? '' : Math.max(0, row.breakEven - row.paidTickets), row.paidRevenue, row.spend, currencyTotals(row.mandatory), row.unattributedTickets, reportSignals(row).map(item => item.text).join(' | ')]);
   const csv = '\ufeff' + [headers, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = `legacy-brain-report-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  const link = document.createElement('a'); link.href = url; link.download = `legacy-brain-report-${dateInWarsaw()}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   setStatus('Таблица отчёта сохранена');
 }
 
@@ -1753,7 +1749,7 @@ async function loadReportsModule() {
   const selectedConcert = concerts.find(concert => concert.id === concertId);
   const selectedChannel = metrics.find(metric => metric.channel_id === channelId);
   const reportScope = [selectedConcert?.event_name || (concertId === 'ALL' ? 'все концерты' : 'выбранный концерт'), city === 'ALL' ? '' : `город: ${city}`, status === 'ALL' ? '' : `статус: ${label('status', status)}`, selectedChannel?.channel_name || (channelId === 'ALL' ? '' : 'выбранный канал'), attention === 'ATTENTION' ? 'только с сигналами' : '', dateFrom ? `с ${dateLabel(dateFrom)}` : '', dateTo ? `по ${dateLabel(dateTo)}` : ''].filter(Boolean).join(' · ');
-  byId('report-print-context').textContent = `Сформировано ${new Date().toLocaleString('ru-RU')} · ${reportScope}`;
+  byId('report-print-context').textContent = `Сформировано ${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Warsaw' })} · ${reportScope}`;
   let visibleConcerts = concerts.filter(concert => (concertId === 'ALL' || concert.id === concertId) && (city === 'ALL' || concert.city === city) && (status === 'ALL' || concert.status === status) && (!dateFrom || concert.event_date >= dateFrom) && (!dateTo || concert.event_date <= dateTo));
   const candidateIds = new Set(visibleConcerts.map(concert => concert.id));
   const candidateCampaigns = campaigns.filter(campaign => candidateIds.has(campaign.concert_id) && (channelId === 'ALL' || campaign.channel_id === channelId));
@@ -1774,7 +1770,8 @@ async function loadReportsModule() {
   byId('r-concerts').textContent = visibleConcerts.length;
   const fallbackUnattributedReports = latestFallbackUnattributedReports(visibleUnattributedReports, visiblePaid);
   byId('r-paid-tickets').textContent = fmt(visiblePaid.reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackOperatorReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0));
-  byId('r-spend').textContent = money(visibleCampaigns.reduce((sum, campaign) => sum + (Number(campaign.actual_spend) || 0), 0));
+  const concertCurrency = new Map(concerts.map(concert => [concert.id, concert.currency || 'PLN']));
+  byId('r-spend').textContent = currencyTotals(visibleCampaigns.map(campaign => ({ amount: campaign.actual_spend, currency: concertCurrency.get(campaign.concert_id) || 'PLN' })));
   byId('r-paid-tickets-note').textContent = fallbackOperatorReports.length || fallbackUnattributedReports.length ? 'подтверждённые заказы и итоги операторов' : channelId === 'ALL' ? 'подтверждённые заказы' : 'подтверждённые заказы выбранного канала';
   byId('r-spend-note').textContent = channelId === 'ALL' ? 'внесённые расходы кампаний' : 'расходы кампаний выбранного канала';
   byId('r-unattributed').textContent = channelId === 'ALL' ? fmt(paid.filter(order => !order.campaign_id).reduce((sum, order) => sum + (Number(order.ticket_count) || 0), 0) + fallbackUnattributedReports.reduce((sum, report) => sum + (Number(report.confirmed_tickets) || 0), 0)) : '—';
@@ -1807,13 +1804,6 @@ function subtractCurrencyMaps(available, required) {
   const result = new Map();
   currencies.forEach(currency => result.set(currency, (available.get(currency) || 0) - (required.get(currency) || 0)));
   return result;
-}
-
-function dateAfterDays(days) {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function mandatoryDueWithin(days) {
@@ -1873,7 +1863,7 @@ async function loadFinance() {
   ]);
   const { data, error } = expensesResult;
   if (error) {
-    byId('expense-list').innerHTML = `<div class="empty">Не вдалося завантажити витрати: ${esc(error.message)}</div>`;
+    byId('expense-list').innerHTML = `<div class="empty">Не удалось загрузить расходы: ${esc(error.message)}</div>`;
     byId('finance-note').classList.add('error');
     return;
   }
@@ -1894,7 +1884,7 @@ function openCashBalanceForm(balance = null) {
   form.hidden = false;
   form.elements.id.value = balance?.id || '';
   ['account_name', 'amount', 'currency', 'as_of_date', 'notes'].forEach(field => { form.elements[field].value = balance?.[field] ?? ''; });
-  if (!balance) { form.elements.currency.value = 'PLN'; form.elements.as_of_date.value = new Date().toISOString().slice(0, 10); }
+  if (!balance) { form.elements.currency.value = 'PLN'; form.elements.as_of_date.value = dateInWarsaw(); }
   byId('cash-balance-form-mode').textContent = balance ? 'РЕДАКТИРОВАНИЕ ОСТАТКА' : 'НОВЫЙ ОСТАТОК';
   byId('cash-balance-form-title').textContent = balance ? balance.account_name : 'Добавить деньги на счёте или в кассе';
   byId('cash-balance-form-note').textContent = '';
@@ -1924,8 +1914,8 @@ function openExpenseForm(expense = null) {
   populateConcertOptions();
   form.reset();
   form.hidden = false;
-  byId('expense-form-mode').textContent = expense ? 'РЕДАГУВАННЯ ВИТРАТИ' : 'НОВА ВИТРАТА';
-  byId('expense-form-title').textContent = expense ? expense.description : 'Додати запис';
+  byId('expense-form-mode').textContent = expense ? 'РЕДАКТИРОВАНИЕ РАСХОДА' : 'НОВЫЙ РАСХОД';
+  byId('expense-form-title').textContent = expense ? expense.description : 'Добавить запись';
   byId('expense-form-note').textContent = '';
   form.elements.id.value = expense?.id || '';
   const fields = ['concert_id', 'category', 'description', 'amount', 'currency', 'expense_type', 'payment_status', 'due_date', 'supplier', 'notes'];
@@ -1946,10 +1936,10 @@ async function saveExpense(event) {
   if (existing?.include_in_projected_cost && (!form.elements.include_in_projected_cost.checked || raw.expense_type !== 'OPTIONAL_FUTURE')) payload.include_in_projected_cost = false;
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
-  byId('expense-form-note').textContent = 'Збереження…';
+  byId('expense-form-note').textContent = 'Сохранение…';
   const result = id ? await db.from('daria_expenses').update(payload).eq('id', id) : await db.from('daria_expenses').insert(payload);
   submit.disabled = false;
-  if (result.error) { byId('expense-form-note').textContent = `Помилка: ${result.error.message}`; return; }
+  if (result.error) { byId('expense-form-note').textContent = `Ошибка: ${result.error.message}`; return; }
   form.hidden = true;
   setStatus(id ? 'Расход обновлён в общей базе' : 'Расход добавлен в общую базу');
   await loadFinance();
@@ -2102,7 +2092,7 @@ function bindEvents() {
       const concert = state.concerts.find(item => item.id === taskButton.dataset.id);
       const kind = taskButton.dataset.attentionTask;
       showView('tasks');
-      openTaskForm(null, concert, { title: attentionTaskTitle(kind), details: `Создано из проверки полноты данных: ${kind === 'source' ? 'нет файла-источника' : kind === 'snapshot' ? 'нет свежего среза продаж' : 'не указана вместимость площадки'}.`, priority: 'HIGH', task_status: 'OPEN', due_date: new Date().toISOString().slice(0, 10) });
+      openTaskForm(null, concert, { title: attentionTaskTitle(kind), details: `Создано из проверки полноты данных: ${kind === 'source' ? 'нет файла-источника' : kind === 'snapshot' ? 'нет свежего среза продаж' : 'не указана вместимость площадки'}.`, priority: 'HIGH', task_status: 'OPEN', due_date: dateInWarsaw() });
       return;
     }
     const button = event.target.closest('[data-action]');
@@ -2243,7 +2233,6 @@ function bindEvents() {
 }
 
 async function init() {
-  localizeStaticInterface();
   bindEvents();
   renderBooking();
   const initialView = location.hash.slice(1);
@@ -2274,4 +2263,4 @@ async function init() {
   if (document.querySelector('[data-panel="regulation"]').classList.contains('active')) window.loadRegulationWorkspace?.();
 }
 
-init().catch(error => { console.error(error); setStatus(`Помилка запуску: ${error.message}`, true); });
+init().catch(error => { console.error(error); setStatus(`Ошибка запуска: ${error.message}`, true); });

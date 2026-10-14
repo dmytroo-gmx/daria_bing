@@ -2,6 +2,13 @@ const { bearer, verifySession } = require('../server/ops-session');
 const store = require('../server/ops-store');
 const { sendTelegram } = require('../server/telegram-message');
 const regulation = require('../shared/regulation');
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = value => uuidPattern.test(String(value || ''));
+function isDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 
 async function authenticate(request) {
   const session = verifySession(bearer(request), process.env.LEGACY_OPS_SESSION_SECRET);
@@ -59,7 +66,7 @@ module.exports = async function handler(request, response) {
         return response.status(200).json({ user: publicOpsUser(user), users: users.map(publicOpsUser), tasks, concerts, documents, metrics, expenses, milestones, snapshots });
       }
       const concertId = String(request.query?.concert_id || '');
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(concertId)) return response.status(400).json({ error: 'concert_id_required' });
+      if (!isUuid(concertId)) return response.status(400).json({ error: 'concert_id_required' });
       const byConcert = `concert_id=eq.${encodeURIComponent(concertId)}`;
       const optional = await Promise.allSettled([
         store.select(`daria_regulation_steps?${byConcert}&select=*&order=updated_at.desc`),
@@ -121,11 +128,24 @@ module.exports = async function handler(request, response) {
       }
       if (request.body?.entity !== 'task') return response.status(400).json({ error: 'unknown_entity' });
       const row = request.body.row || {};
+      if (row.id && !isUuid(row.id)) return response.status(400).json({ error: 'invalid_task_id' });
+      if (row.concert_id && !isUuid(row.concert_id)) return response.status(400).json({ error: 'invalid_concert_id' });
+      if (row.assignee_ops_user_id && !isUuid(row.assignee_ops_user_id)) return response.status(400).json({ error: 'invalid_assignee' });
+      if (row.blocked_by_ops_user_id && !isUuid(row.blocked_by_ops_user_id)) return response.status(400).json({ error: 'invalid_decision_owner' });
+      if (row.due_date && !isDateOnly(row.due_date)) return response.status(400).json({ error: 'invalid_due_date' });
       let existing = null;
       if (row.id) existing = (await store.select(`daria_operational_tasks?id=eq.${encodeURIComponent(row.id)}&select=*`))[0] || null;
       if (row.id && !existing) return response.status(404).json({ error: 'not_found' });
       const clean = allowedTask(row, user, existing);
       if (!clean.title) return response.status(400).json({ error: 'title_required' });
+      const [activeUsers, concerts] = await Promise.all([
+        store.select('daria_ops_users?active=eq.true&select=id'),
+        clean.concert_id ? store.select(`daria_concerts?id=eq.${encodeURIComponent(clean.concert_id)}&select=id`) : Promise.resolve([])
+      ]);
+      const activeUserIds = new Set(activeUsers.map(item => item.id));
+      if (!activeUserIds.has(clean.assignee_ops_user_id)) return response.status(400).json({ error: 'assignee_not_active' });
+      if (clean.blocked_by_ops_user_id && !activeUserIds.has(clean.blocked_by_ops_user_id)) return response.status(400).json({ error: 'decision_owner_not_active' });
+      if (clean.concert_id && !concerts[0]) return response.status(400).json({ error: 'concert_not_found' });
       const saved = existing
         ? await store.update(`daria_operational_tasks?id=eq.${encodeURIComponent(row.id)}`, clean)
         : await store.insert('daria_operational_tasks', clean);
@@ -134,11 +154,11 @@ module.exports = async function handler(request, response) {
     if (request.method === 'DELETE') {
       if (request.body?.entity === 'regulation_step') {
         if (!['OWNER', 'OPERATIONS_ADMIN'].includes(user.role)) return response.status(403).json({ error: 'forbidden' });
-        const id = request.body?.id; if (!id) return response.status(400).json({ error: 'invalid_delete' });
+        const id = request.body?.id; if (!isUuid(id)) return response.status(400).json({ error: 'invalid_delete' });
         await store.remove(`daria_regulation_steps?id=eq.${encodeURIComponent(id)}`);
         return response.status(200).json({ deleted: true });
       }
-      if (request.body?.entity !== 'task' || !request.body?.id) return response.status(400).json({ error: 'invalid_delete' });
+      if (request.body?.entity !== 'task' || !isUuid(request.body?.id)) return response.status(400).json({ error: 'invalid_delete' });
       const current = (await store.select(`daria_operational_tasks?id=eq.${encodeURIComponent(request.body.id)}&select=id,created_by_ops_user_id`))[0];
       if (!current) return response.status(404).json({ error: 'not_found' });
       if (!['OWNER', 'OPERATIONS_ADMIN'].includes(user.role) && current.created_by_ops_user_id !== user.id) return response.status(403).json({ error: 'forbidden' });
